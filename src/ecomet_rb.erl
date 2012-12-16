@@ -81,7 +81,7 @@ start(Rses) ->
     Vhost = Rses#rses.vhost,
     X = Rses#rses.exchange,
     Xtype = Rses#rses.exchange_type,
-    {ok, Connection} = amqp_connection:start(network, #amqp_params{
+    {ok, Connection} = amqp_connection:start(#amqp_params_network{
         username = User,
         password = Password,
         host = Host,
@@ -342,6 +342,7 @@ create_queue(#conn{channel=Channel, ticket=Ticket}) ->
 %%
 bind_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Queue,
               Bind_key) ->
+    %mpln_p_debug:pr({?MODULE, ?LINE, bind_queue, Queue, Bind_key}),
     QueueBind = #'queue.bind'{ticket = Ticket,
         exchange = X,
         queue = Queue,
