@@ -135,24 +135,21 @@ module_path() ->
 %% @doc handler of sockjs messages: init, recv, closed.
 %%
 bcast(C, Conn, {recv, Data}) ->
-    mpln_p_debug:pr({?MODULE, 'bcast recv', ?LINE, Conn, self(), Data},
-                    C#csr.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, 'bcast recv', ?LINE, Conn, self(), Data}, C#csr.debug, run, 4),
     Sid = Conn,
     erpher_et:trace_me(40, ?MODULE, ecomet_server, sockjs_recv, {Sid, Data}),
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok;
 
 bcast(C, Conn, init) ->
-    mpln_p_debug:pr({?MODULE, 'bcast init', ?LINE, Conn, self()},
-                    C#csr.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, 'bcast init', ?LINE, Conn, self()}, C#csr.debug, run, 3),
     Sid = Conn,
     erpher_et:trace_me(45, ?MODULE, ecomet_server, sockjs_init, Sid),
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
 bcast(C, Conn, closed) ->
-    mpln_p_debug:pr({?MODULE, 'bcast closed', ?LINE, Conn, self()},
-                    C#csr.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, 'bcast closed', ?LINE, Conn, self()}, C#csr.debug, run, 3),
     Sid = Conn,
     erpher_et:trace_me(45, ?MODULE, ecomet_server, sockjs_closed, Sid),
     ecomet_server:sjs_del(Sid, Conn),

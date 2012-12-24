@@ -24,6 +24,6 @@
     {env, []},
     {mod, {ecomet_server_app,[]}},
     % ssl - for yaws, eworkman - for logs
-    {applications, [kernel, stdlib, ssl, rabbit, erpher_rt_stat, eworkman, socketio, sockjs, cowboy, crypto]}
+    {applications, [kernel, stdlib, ssl, erpher_rt_stat, eworkman, socketio, sockjs, cowboy, crypto, rabbit]} %rabbit
 ]}.
 

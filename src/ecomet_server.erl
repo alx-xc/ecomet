@@ -69,7 +69,7 @@ init(_) ->
     process_flag(trap_exit, true),
     C = ecomet_conf:get_config(),
     New = prepare_all(C),
-    mpln_p_debug:pr({?MODULE, 'init done', ?LINE}, New#csr.debug, run, 1),
+    mpln_p_debug:pr({?MODULE, 'init', ?LINE}, New#csr.debug, run, 1),
     {ok, New}.
 
 %%-----------------------------------------------------------------------------
@@ -116,8 +116,7 @@ handle_cast({set_jit_log_level, N}, St) ->
     {noreply, St};
 
 handle_cast({sjs_add, Sid, Conn}, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid},
-                    St#csr.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid}, St#csr.debug, run, 2),
     erpher_et:trace_me(45, ?MODULE, undefined, sockjs_add_child, Sid),
     {_Res, New} = add_sjs_child(St, Sid, Conn),
     {noreply, New};
@@ -148,9 +147,7 @@ handle_cast(_, St) ->
 terminate(_Reason, St) ->
     ecomet_rb:teardown(St#csr.conn),
     ecomet_sockjs_handler:stop(),
-    mpln_p_debug:pr({?MODULE, 'terminate', ?LINE, _Reason},
-                    St#csr.debug, run, 1),
-    %yaws:stop(),
+    mpln_p_debug:pr({?MODULE, 'terminate', ?LINE, _Reason}, St#csr.debug, run, 1),
     ok.
 
 %%-----------------------------------------------------------------------------
@@ -517,16 +514,14 @@ add_msg_stat(#csr{stat=#stat{rabbit=Rb_stat} = Stat} = State, Tag) ->
 del_sjs_pid2(St, Ref, Conn) ->
     % gives an exception when trying to close already closed session
     Res = (catch sockjs:close(3000, "conn. closed.", Conn)),
-    mpln_p_debug:pr({?MODULE, 'del_sjs_pid2', ?LINE, Ref, Conn, Res},
-                    St#csr.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, 'del_sjs_pid2', ?LINE, Ref, Conn, Res}, St#csr.debug, run, 3),
     F = fun(#chi{sjs_sid=X}) ->
                 X == Ref
         end,
     proceed_del_sjs_pid(St, F).
 
 del_sjs_pid(St, _Pid, Ref) ->
-    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Ref, _Pid},
-                    St#csr.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Ref, _Pid}, St#csr.debug, run, 2),
     F = fun(#chi{id=Id}) ->
                 Id == Ref
         end,
@@ -536,8 +531,7 @@ del_sjs_pid(St, _Pid, Ref) ->
 
 proceed_del_sjs_pid(#csr{sjs_children=L} = St, F) ->
     {Del, Cont} = lists:partition(F, L),
-    mpln_p_debug:pr({?MODULE, 'proceed_del_sjs_pid', ?LINE, Del, Cont},
-                    St#csr.debug, run, 5),
+    mpln_p_debug:pr({?MODULE, 'proceed_del_sjs_pid', ?LINE, Del, Cont}, St#csr.debug, run, 5),
     terminate_sjs_children(St, Del),
     St#csr{sjs_children = Cont}.
 
@@ -546,14 +540,12 @@ proceed_del_sjs_pid(#csr{sjs_children=L} = St, F) ->
 %% @doc deletes and terminates socket-io related process from a list of children
 %%
 del_sio_pid(#csr{sio_children=L} = St, Pid) ->
-    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Pid},
-                    St#csr.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Pid}, St#csr.debug, run, 4),
     F = fun(#chi{sio_cli=C_pid}) ->
                 C_pid == Pid
         end,
     {Del, Cont} = lists:partition(F, L),
-    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Del, Cont},
-                    St#csr.debug, run, 5),
+    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Del, Cont}, St#csr.debug, run, 5),
     terminate_sio_children(St, Del),
     St#csr{sio_children = Cont}.
 
@@ -619,8 +611,6 @@ process_sjs_msg(#csr{smoke_test=broadcast} = St, _Sid, _Conn, Data) ->
     process_sjs_broadcast_msg(St, Data);
 
 process_sjs_msg(St, Sid, Conn, Data) ->
-    mpln_p_debug:pr({?MODULE, 'process_sjs_msg', ?LINE, Sid, Conn, Data},
-                    St#csr.debug, run, 4),
     case check_sjs_child(St, Sid, Conn) of
         {{ok, Pid}, St_c} ->
             ecomet_conn_server:data_from_sjs(Pid, Data),
@@ -691,11 +681,9 @@ check_sio_child(#csr{sio_children = Ch} = St, Sid) ->
 %% alive
 %%
 is_sio_child_alive(St, List, Id) ->
-    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, List, Id},
-                    St#csr.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, List, Id}, St#csr.debug, run, 4),
     L2 = [X || X <- List, X#chi.sio_sid == Id],
-    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, L2, Id},
-                    St#csr.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, L2, Id}, St#csr.debug, run, 4),
     case L2 of
         [I | _] ->
             {is_process_alive(I#chi.pid), I};
@@ -709,11 +697,9 @@ is_sio_child_alive(St, List, Id) ->
 %% alive
 %%
 is_sjs_child_alive(St, List, Id) ->
-    mpln_p_debug:pr({?MODULE, "is_sjs_child_alive", ?LINE, List, Id},
-                    St#csr.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, "is_sjs_child_alive", ?LINE, List, Id}, St#csr.debug, run, 4),
     L2 = [X || X <- List, X#chi.sjs_sid == Id],
-    mpln_p_debug:pr({?MODULE, "is_sjs_child_alive", ?LINE, L2, Id},
-                    St#csr.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, "is_sjs_child_alive", ?LINE, L2, Id}, St#csr.debug, run, 4),
     case L2 of
         [I | _] ->
             {is_process_alive(I#chi.pid), I};
@@ -752,9 +738,11 @@ prepare_stat_result(#csr{sjs_children=Ch}, procs) ->
 %%
 prepare_stat_result(#csr{sjs_children=Ch}, procs_mem) ->
     Len = length(Ch),
+    Cid = [gen_server:call(X#chi.pid, get_client_id) || X <- Ch],
+    Clients_count = sets:size(sets:from_list(Cid)),
     Pids = [X#chi.pid || X <- Ch],
     Sum = estat_misc:fetch_sum_pids_memory(Pids),
-    {Len, Sum}.
+    [{prc, Len}, {mem, Sum}, {clnt, Clients_count}].
 
 %%-----------------------------------------------------------------------------
 %%

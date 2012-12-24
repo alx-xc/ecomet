@@ -63,10 +63,7 @@ init([List]) ->
     process_flag(trap_exit, true), % to flush jit log messages
     C = ecomet_conf:get_child_config(List),
     New = prepare_all(C),
-    mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web},
-        C#child.debug, run, 2),
-    erpher_jit_log:add_jit_msg(New#child.jit_log_data, New#child.id,
-                               'init', 2, 'init'),
+    mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web}, C#child.debug, run, 1),
     erpher_et:trace_me(45, ?MODULE, New#child.id, init, New#child.sjs_sid),
     {ok, New, New#child.economize}.
 
@@ -76,6 +73,10 @@ handle_call(stop, _From, St) ->
 
 handle_call(status, _From, St) ->
     {reply, St, St, St#child.economize};
+
+handle_call(get_client_id, _From, St) ->
+    ClientId = {St#child.id_s, St#child.sio_auth_host},
+    {reply, ClientId, St};
 
 handle_call(_N, _From, St) ->
     mpln_p_debug:pr({?MODULE, call_other, ?LINE, _N}, St#child.debug, run, 2),
@@ -93,47 +94,37 @@ handle_cast({set_jit_log_level, N}, St) ->
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_server, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
-    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id},
-        St#child.debug, run, 2),
-    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id, Data},
-                    St#child.debug, web_msg, 6),
+    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id}, St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id, Data}, St#child.debug, web_msg, 6),
     erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_server, Data),
-    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                               'data from server', 4, Data),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
     call_gc(New),
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sjs, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
-    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id},
-        St#child.debug, run, 2),
-    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id, Data},
-                    St#child.debug, web_msg, 6),
+    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id}, St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id, Data}, St#child.debug, web_msg, 6),
     erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_sjs, Data),
-    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                               'data from sockjs', 4, Data),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
     call_gc(New),
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sio, Data}, #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id},
-        St#child.debug, run, 2),
-    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id, Data},
-                    St#child.debug, web_msg, 6),
+    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id}, St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id, Data}, St#child.debug, web_msg, 6),
     St_r = ecomet_conn_server_sio:process_sio(St, Data),
     New = update_idle(St_r),
     {noreply, New, New#child.economize};
 
 handle_cast(_N, #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, cast_other, ?LINE, Id, _N},
-        St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, cast_other, ?LINE, Id, _N}, St#child.debug, run, 2),
     {noreply, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
 terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
+    mpln_p_debug:pr({?MODULE, ?LINE, data_from_sio, Id}, St#child.debug, run, 6),
     erpher_et:trace_me(45, ?MODULE, Id, terminate, Sconn),
     Res_t = ecomet_rb:teardown_tags(Conn),
     Res_q = ecomet_rb:teardown_queues(Conn),
@@ -143,12 +134,8 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
        true ->
             ok
     end,
-    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                               'terminate', 2, 'terminate'),
-    send_jit_log(Reason, St),
     ets:delete(St#child.jit_log_data),
-    mpln_p_debug:pr({?MODULE, terminate, ?LINE, Id, Res_t, Res_q},
-                    St#child.debug, run, 2),
+    mpln_p_debug:pr({?MODULE, ?LINE, terminate, Id, Reason}, St#child.debug, run, 1),
     ok.
 
 %%-----------------------------------------------------------------------------
@@ -156,19 +143,15 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
 handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
             #child{id=Id} = St) ->
     erpher_et:trace_me(30, ?MODULE, Id, 'basic.deliver', Req),
-    mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req},
-                    St#child.debug, rb_msg, 6),
+    mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req}, St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
-    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                               'amqp message', 5, _Content),
     New = send_rabbit_msg(St, Req),
     {noreply, New, New#child.economize};
 
 %% @doc amqp setup consumer confirmation. In fact, unnecessary for case
 %% of list of consumers
 handle_info(#'basic.consume_ok'{consumer_tag = Tag}, #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag},
-                    St#child.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, consume_ok, ?LINE, Id, Tag}, St#child.debug, run, 3),
     New = St#child{conn=(St#child.conn)#conn{consumer=ok}},
     {noreply, New, New#child.economize};
 
@@ -316,8 +299,7 @@ prepare_rabbit(#child{event=undefined} = C) ->
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     mpln_p_debug:pr({?MODULE, prepare_rabbit, ?LINE, C}, C#child.debug, run, 6),
     New_conn = ecomet_rb:prepare_queue_bind_one(Conn, Event, No_local),
-    mpln_p_debug:pr({?MODULE, prepare_rabbit_queue, ?LINE, New_conn},
-                    C#child.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, prepare_rabbit_queue, ?LINE, New_conn}, C#child.debug, run, 3),
     C#child{conn=New_conn}.
 
 %%-----------------------------------------------------------------------------
@@ -334,8 +316,7 @@ periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref,
     clean_jit_logs(State),
     St_a = check_auth(St_c),
     St_sent = send_queued_msg(St_a),
-    mpln_p_debug:pr({?MODULE, periodic_check, ?LINE, Id, St_sent},
-                    St_sent#child.debug, run, 7),
+    mpln_p_debug:pr({?MODULE, periodic_check, ?LINE, Id, St_sent}, St_sent#child.debug, run, 7),
     Nref = erlang:send_after(T * 1000, self(), periodic_check),
     St_sent#child{timer=Nref}.
 
@@ -358,22 +339,17 @@ prepare_id(St) ->
 
 send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
                 {Dinfo, Content} = Req) ->
-    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Req},
-                    St#child.debug, rb_msg, 7),
+    mpln_p_debug:pr({?MODULE, do_rabbit_msg, ?LINE, Id, Req}, St#child.debug, rb_msg, 7),
     {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
     case ecomet_data:is_our_id(Base, Corr_msg) of
         true when No_local == true ->
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id},
-                            St#child.debug, rb_msg, 5),
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id}, St#child.debug, rb_msg, 5),
             ecomet_stat:add_own_msg(St);
         _ ->
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id},
-                            St#child.debug, rb_msg, 5),
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id}, St#child.debug, rb_msg, 5),
             Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
             St_st = ecomet_stat:add_other_msg(Stdup),
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat,
-                             ?LINE, Id, St_st},
-                            St_st#child.debug, stat, 6),
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat, ?LINE, Id, St_st}, St_st#child.debug, stat, 6),
             proceed_send(St_st, Dinfo, Payload)
     end.
 
@@ -384,6 +360,7 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
 %%
 proceed_send(#child{type=sjs} = St, #'basic.deliver'{routing_key=Key},
              Content) ->
+    mpln_p_debug:pr({?MODULE, proceed_send, ?LINE}, St#child.debug, run, 6),
     ecomet_conn_server_sjs:send(St, Key, Content);
 
 proceed_send(#child{type=sio} = St, #'basic.deliver'{routing_key=Key},
@@ -433,6 +410,7 @@ clean_queue_by_len(Q, Max) ->
 %% @doc sends one item to the client
 %%
 send_one_response(St, #cli{from=Client}, Item) ->
+    mpln_p_debug:pr({?MODULE, send_one_response, ?LINE}, St#child.debug, run, 6),
     Resp = make_response(Item),
     {ok, Dup_data} = Resp,
     ecomet_test:dup_message_to_rabbit(St, Dup_data), % FIXME: for debug only

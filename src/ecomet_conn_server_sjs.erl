@@ -76,8 +76,7 @@ recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie,
 -spec process_msg_from_server(#child{}, any()) -> #child{}.
 
 process_msg_from_server(#child{id=Id, sjs_conn=Conn, sjs_sid=Sid} = St, Data) ->
-    mpln_p_debug:pr({?MODULE, 'process_msg_from_server', ?LINE, Id, Sid, Data},
-                    St#child.debug, run, 4),
+    mpln_p_debug:pr({?MODULE, 'process_msg_from_server', ?LINE, Id, Sid, Data}, St#child.debug, run, 4),
     erpher_et:trace_me(50, {?MODULE, Id}, Sid, send_data_from_server, Data),
     sockjs:send(Data, Conn),
     St.
@@ -94,10 +93,8 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
     Data = get_json_body(Bin),
     case ecomet_data_msg:get_auth_info(Data) of
         undefined when Uid == undefined ->
-            erpher_et:trace_me(50, ?MODULE, Id, 'undefined uid',
-                Bin),
-            mpln_p_debug:pr({?MODULE, 'process_msg', ?LINE, 'no auth data', Id},
-                            St#child.debug, run, 4),
+            erpher_et:trace_me(50, ?MODULE, Id, 'undefined uid', Bin),
+            mpln_p_debug:pr({?MODULE, 'process_msg', ?LINE, 'no auth data', Id}, St#child.debug, run, 4),
             St;
         undefined ->
             erpher_et:trace_me(40, {?MODULE, Id}, Uid, 'use_current_exchange',
@@ -124,14 +121,10 @@ send(#child{id=Id, id_s=undefined} = St, _Key, _Body) ->
     St;
 send(#child{id=Id, id_s=User, sjs_conn=Conn, sjs_sid=Sid} = St, Key, Body) ->
     Content = get_json_body(Body),
-    mpln_p_debug:pr({?MODULE, 'send', ?LINE, Id, User, Sid, Conn,
-                    Key, Body, Content}, St#child.debug, run, 5),
     Users = ecomet_data_msg:get_users(Content),
-    Message = ecomet_data_msg:get_message(Content),
     case is_user_allowed(User, Users) of
         true ->
-            mpln_p_debug:pr({?MODULE, 'send', ?LINE, allowed, Id, Sid, Message},
-                            St#child.debug, run, 4),
+            Message = ecomet_data_msg:get_message(Content),
             Data = [{<<"event">>, Key},
                 {<<"user">>, User},
                 {<<"message">>, Message}],
@@ -143,8 +136,6 @@ send(#child{id=Id, id_s=User, sjs_conn=Conn, sjs_sid=Sid} = St, Key, Body) ->
             %Json = mochijson2:encode(Data),
             Json_b = iolist_to_binary(Json),
             %Json_s = binary_to_list(Json_b),
-            mpln_p_debug:pr({?MODULE, 'send', ?LINE, json, Id, Sid, Data,
-                             Json, Json_b}, St#child.debug, run, 6),
             Msg = Json_b, % for sockjs
             erpher_et:trace_me(40, ?MODULE, Id, 'send', Msg),
             sockjs:send(Msg, Conn),
@@ -180,8 +171,6 @@ send_auth_req(#child{id=Id} = St, Info) ->
     Cookie = ecomet_data_msg:get_auth_cookie(Info),
     {Url, Host} = find_auth_host(St, Url0),
     Res = proceed_http_auth_req(St, Url, Cookie, Host),
-    mpln_p_debug:pr({?MODULE, 'send_auth_req res', ?LINE, Id, Res},
-                    St#child.debug, http, 6),
     {Res, Url, Cookie, Host}.
 
 %%-----------------------------------------------------------------------------
@@ -204,8 +193,6 @@ find_auth_host(#child{user_data_as_auth_host=true} = St, Url) ->
             Str = [Scheme_str, "", Host, ":", Port_str, Path, Query],
             Res_url = unicode:characters_to_binary(Str),
             Auth_host = make_auth_host(User_info),
-            mpln_p_debug:pr({?MODULE, 'find_auth_host', ?LINE,
-                             Res_url, Auth_host}, St#child.debug, http, 4),
             {Res_url, Auth_host}
         end;
 
@@ -233,13 +220,9 @@ proceed_http_auth_req(#child{id=Id, http_connect_timeout=Conn_t,
                              http_timeout=Http_t} = St, Url, Cookie, Host) ->
     Hdr = make_header(Cookie, Host),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
-    mpln_p_debug:pr({?MODULE, 'proceed_http_auth_req', ?LINE, Id, Req},
-                    St#child.debug, http, 4),
     Res = httpc:request(post, Req,
                   [{timeout, Http_t}, {connect_timeout, Conn_t}],
                   [{body_format, binary}]),
-    mpln_p_debug:pr({?MODULE, 'proceed_http_auth_req result', ?LINE, Id, Res},
-                    St#child.debug, http, 5),
     Res.
 
 %%-----------------------------------------------------------------------------
@@ -276,11 +259,8 @@ proceed_auth_msg(#child{id=Id,
     erpher_et:trace_me(45, ?MODULE, Id, 'auth http error', Reason),
     Bin = mpln_misc_web:make_term2_binary(Reason),
     Short = mpln_misc_web:sub_bin(Bin),
-    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                               'auth', 3,
-                               ['http_error', Url, Host, Cookie, Short]),
-    mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id, Reason},
-                    St#child.debug, run, 1),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id, 'auth', 3, ['http_error', Url, Host, Cookie, Short]),
+    mpln_p_debug:pr({?MODULE, proceed_auth_msg, ?LINE, error, Id, Reason}, St#child.debug, run, 1),
     ecomet_conn_server:stop(self()),
     St#child{jit_log_status=error, id_s = undefined}.
 
@@ -298,23 +278,16 @@ proceed_type_msg(#child{id=Id, id_s=undefined,
                         sio_auth_host=Host,
                         sio_auth_cookie=Cookie
                        } = St, _, _, Data, Http_resp) ->
-    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, 'undefined id_s', Id},
-                    St#child.debug, run, 2),
-    erpher_et:trace_me(48, ?MODULE, Id, 'undefined user id',
-        {Url, Host, Cookie, Http_resp, Data}),
+    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, 'undefined id_s', Id}, St#child.debug, run, 2),
+    erpher_et:trace_me(48, ?MODULE, Id, 'undefined user id', {Url, Host, Cookie, Http_resp, Data}),
     Short_rb = mpln_misc_web:make_term2_short_bin(Data),
     Short_http = mpln_misc_web:make_term2_short_bin(Http_resp),
-    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                               'auth', 3,
-                               ['error', 'undefined user id',
-                                Url, Host, Cookie, Short_rb, Short_http]),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id, 'auth', 3, ['error', 'undefined user id', Url, Host, Cookie, Short_rb, Short_http]),
     ecomet_conn_server:stop(self()),
     St#child{jit_log_status=error};
 
 proceed_type_msg(#child{id=Id, conn=Conn, no_local=No_local,
                         routes=Routes} = St, Exchange, 'reauth', _Data, _) ->
-    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, reauth, Id, Exchange,
-                     Routes}, St#child.debug, run, 5),
     erpher_et:trace_me(30, ?MODULE, Id, 'reauth', {Exchange, Routes}),
     New = ecomet_rb:prepare_queue_rebind(Conn, Exchange, Routes, [], No_local),
     St#child{conn = New};
@@ -323,11 +296,7 @@ proceed_type_msg(#child{id=Id, conn=Conn, no_local=No_local,
                         routes=Old_routes} = St, Exchange, <<"subscribe">>,
                  Data, _) ->
     Routes = ecomet_data_msg:get_routes(Data, []),
-    erpher_et:trace_me(30, ?MODULE, Id, 'subscribe',
-        {Exchange, Routes, Old_routes}),
-    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, subscribe, Id,
-                     Exchange, Old_routes, Routes, Data},
-                    St#child.debug, run, 5),
+    erpher_et:trace_me(30, ?MODULE, Id, 'subscribe', {Exchange, Routes, Old_routes}),
     New = case Exchange of
               use_current_exchange ->
                   ecomet_rb:prepare_queue_add_bind(Conn, Routes, No_local);
@@ -345,12 +314,8 @@ proceed_type_msg(#child{id=Id,
     erpher_et:trace_me(50, ?MODULE, Id, 'undefined type message', _Other),
     Short_rb = mpln_misc_web:make_term2_short_bin(Data),
     Short_http = mpln_misc_web:make_term2_short_bin(Http_resp),
-    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                               'auth', 3,
-                               ['warning', 'undefined type message',
-                                Url, Host, Cookie, Short_rb, Short_http]),
-    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, other, Id,
-                     _Exch, _Other}, St#child.debug, run, 2),
+    erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id, 'auth', 3, ['warning', 'undefined type message', Url, Host, Cookie, Short_rb, Short_http]),
+    mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, other, Id, _Exch, _Other}, St#child.debug, run, 2),
     St.
 
 %%-----------------------------------------------------------------------------
@@ -382,9 +347,7 @@ proceed_process_auth_resp(#child{id=Id} = St, Body) ->
             Bin = mpln_misc_web:make_term2_binary(Body),
             Short = mpln_misc_web:sub_bin(Bin),
             erpher_et:trace_me(50, ?MODULE, Id, json_error, Body),
-            erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id,
-                                       'auth', 3,
-                                       {'json_error', Short}),
+            erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id, 'auth', 3, {'json_error', Short}),
             {undefined, <<>>};
         Data ->
             X = create_exchange(St, Data),
@@ -392,8 +355,7 @@ proceed_process_auth_resp(#child{id=Id} = St, Body) ->
             % uids MUST come as strings in data, so json decoder would
             % return them as binaries. So we make the current user id
             % a binary for later check for allowed users
-            erpher_et:trace_me(30, ?MODULE, {Id, proceed_process_auth_resp},
-                json_ok, Data),
+            erpher_et:trace_me(30, ?MODULE, {Id, proceed_process_auth_resp}, json_ok, Data),
             Uid_bin = mpln_misc_web:make_binary(Uid),
             {Uid_bin, X}
     end.
@@ -421,8 +383,7 @@ get_json_body(Body) ->
 create_exchange(#child{conn=Conn, exchange_base=Base} = St, Data) ->
     Acc = ecomet_data_msg:get_account(Data),
     Exchange = <<Base/binary, Acc/binary>>,
-    mpln_p_debug:pr({?MODULE, 'create_exchange', ?LINE, Exchange},
-                    St#child.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, 'create_exchange', ?LINE, Exchange}, St#child.debug, run, 2),
     ecomet_rb:create_exchange(Conn, Exchange, <<"topic">>),
     Exchange.
 
