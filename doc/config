@@ -13,7 +13,7 @@ child_config - list of child parameters
     linked cowboy processes. Default: false.
   user_data_as_auth_host - use login field of url auth data as auth host.
     Default: false
-  sio_auth_recheck_interval - interval to perform periodic auth check. Seconds.
+  auth_recheck_interval - interval to perform periodic auth check. Seconds.
     Default: 300 s
   idle_timeout - timeout to terminate idle sockjs connection. Seconds.
   http_connect_timeout - http connect timeout for use in auth check.

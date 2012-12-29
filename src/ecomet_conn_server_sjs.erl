@@ -58,14 +58,14 @@
 %%
 -spec recheck_auth(#child{}) -> #child{}.
 
-recheck_auth(#child{sio_auth_url=undefined, sio_auth_cookie=undefined,
+recheck_auth(#child{auth_url=undefined, auth_cookie=undefined,
                    id_s=undefined} = St) ->
     St;
 
-recheck_auth(#child{sio_auth_url=Url, sio_auth_cookie=Cookie,
-                    sio_auth_host=Host} = St) ->
+recheck_auth(#child{auth_url=Url, auth_cookie=Cookie,
+                    auth_host=Host} = St) ->
     Res_auth = proceed_http_auth_req(St, Url, Cookie, Host),
-    proceed_auth_msg(St#child{sio_auth_last=now()}, Res_auth,
+    proceed_auth_msg(St#child{auth_last=now()}, Res_auth,
                      [{<<"type">>, 'reauth'}]).
 
 %%-----------------------------------------------------------------------------
@@ -104,9 +104,9 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
                              <<"use_current_exchange">>);
         Auth ->
             {Res_auth, Url, Cookie, Host} = send_auth_req(St, Auth),
-            proceed_auth_msg(St#child{sio_auth_url=Url,
-                                      sio_auth_host=Host,
-                                      sio_auth_cookie=Cookie}, Res_auth, Data)
+            proceed_auth_msg(St#child{auth_url=Url,
+                                      auth_host=Host,
+                                      auth_cookie=Cookie}, Res_auth, Data)
     end.
 
 %%-----------------------------------------------------------------------------
@@ -252,9 +252,9 @@ proceed_auth_msg(#child{id=Id} = St, {ok, Info}, Data) ->
     proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data, Info);
 
 proceed_auth_msg(#child{id=Id,
-                        sio_auth_url=Url,
-                        sio_auth_host=Host,
-                        sio_auth_cookie=Cookie
+                        auth_url=Url,
+                        auth_host=Host,
+                        auth_cookie=Cookie
                        } = St, {error, Reason}, _Data) ->
     erpher_et:trace_me(45, ?MODULE, Id, 'auth http error', Reason),
     Bin = mpln_misc_web:make_term2_binary(Reason),
@@ -274,9 +274,9 @@ proceed_auth_msg(#child{id=Id,
                        tuple() | binary()) -> #child{}.
 
 proceed_type_msg(#child{id=Id, id_s=undefined,
-                        sio_auth_url=Url,
-                        sio_auth_host=Host,
-                        sio_auth_cookie=Cookie
+                        auth_url=Url,
+                        auth_host=Host,
+                        auth_cookie=Cookie
                        } = St, _, _, Data, Http_resp) ->
     mpln_p_debug:pr({?MODULE, proceed_type_msg, ?LINE, 'undefined id_s', Id}, St#child.debug, run, 2),
     erpher_et:trace_me(48, ?MODULE, Id, 'undefined user id', {Url, Host, Cookie, Http_resp, Data}),
@@ -307,9 +307,9 @@ proceed_type_msg(#child{id=Id, conn=Conn, no_local=No_local,
     St#child{conn = New, routes = Routes ++ Old_routes};
 
 proceed_type_msg(#child{id=Id,
-                        sio_auth_url=Url,
-                        sio_auth_host=Host,
-                        sio_auth_cookie=Cookie
+                        auth_url=Url,
+                        auth_host=Host,
+                        auth_cookie=Cookie
                        } = St, _Exch, _Other, Data, Http_resp) ->
     erpher_et:trace_me(50, ?MODULE, Id, 'undefined type message', _Other),
     Short_rb = mpln_misc_web:make_term2_short_bin(Data),

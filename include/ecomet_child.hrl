@@ -12,15 +12,11 @@
     start_time = {0,0,0},
     last_use = {0,0,0},
     idle_timeout = ?IDLE_TIMEOUT,
-    sio_mgr, % socket-io event manager
-    sio_hdl, % socket-io handler (module, in fact)
-    sio_cli, % socket-io client
-    sio_sid, % socket-io session id
-    sio_auth_last = {0,0,0},
-    sio_auth_recheck = ?SIO_AUTH_RECHECK_INTERVAL,
-    sio_auth_url,
-    sio_auth_host,
-    sio_auth_cookie,
+    auth_last = {0,0,0},
+    auth_recheck = ?AUTH_RECHECK_INTERVAL,
+    auth_url,
+    auth_host,
+    auth_cookie,
     sjs_sid,
     sjs_conn,
     clients = [], % in case of many requests with the very same id (quite unusual not to say sabotage)
@@ -32,7 +28,7 @@
     exchange_base,
     routes = [], % routing keys
     no_local = false, % for amqp consumer setup
-    type :: 'ws' | 'lp' | 'sio' | 'sjs', % web socket, long polling, socket-io, sockjs
+    type :: 'sjs', % web socket, long polling, socket-io, sockjs
     http_connect_timeout = ?HTTP_CONNECT_TIMEOUT,
     http_timeout = ?HTTP_TIMEOUT,
     user_data_as_auth_host :: undefined | boolean(),

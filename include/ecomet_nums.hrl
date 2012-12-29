@@ -8,7 +8,7 @@
 -define(HTTP_TIMEOUT, 60000). % milliseconds
 -define(SETUP_CONSUMER_TIMEOUT, 10000). % milliseconds
 -define(IDLE_TIMEOUT, 300). % seconds
--define(SIO_AUTH_RECHECK_INTERVAL, 300). % seconds
+-define(AUTH_RECHECK_INTERVAL, 300). % seconds
 -define(QUEUE_MAX_DUR, 20000000). % microseconds
 -define(QUEUE_MAX_LEN, 100).
 -define(T, 1000).

@@ -41,7 +41,6 @@
 -export([terminate/2, code_change/3]).
 -export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 -export([del_child/3]).
--export([add_sio/4, del_sio/1, sio_msg/3]).
 -export([sjs_add/2, sjs_del/2, sjs_msg/3]).
 -export([sjs_broadcast_msg/1]).
 -export([get_stat_raw/0]).
@@ -73,11 +72,6 @@ init(_) ->
     {ok, New}.
 
 %%-----------------------------------------------------------------------------
-handle_call({add_sio, Mgr, Handler, Client, Sid}, _From, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_sio_child', ?LINE}, St#csr.debug, run, 2),
-    {Res, New} = add_sio_child(St, Mgr, Handler, Client, Sid),
-    {reply, Res, New};
-
 % @doc returns accumulated statistic as a list of tuples
 % {atom(), {dict(), dict(), dict()}}
 handle_call({get_stat, Tag}, _From, St) ->
@@ -102,12 +96,6 @@ handle_cast(add_rabbit_inc_own_stat, St) ->
     {noreply, New};
 handle_cast({del_child, Pid, Type, Ref}, St) ->
     New = del_child_pid(St, Pid, Type, Ref),
-    {noreply, New};
-handle_cast({sio_msg, Pid, Sid, Data}, St) ->
-    New = process_sio_msg(St, Pid, Sid, Data),
-    {noreply, New};
-handle_cast({del_sio, Pid}, St) ->
-    New = del_sio_pid(St, Pid),
     {noreply, New};
 
 handle_cast({set_jit_log_level, N}, St) ->
@@ -208,44 +196,10 @@ sjs_broadcast_msg(Data) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates a process that talks to socket-io child started somewhere else.
-%% 'no local' mode (amqp messages from the child should not return to this
-%% child).
-%% @since 2011-11-22 16:24
-%%
--spec add_sio(pid(), atom(), pid(), any()) -> {ok, pid()}
-                                              | {ok, pid(), any()}
-                                              | {error, any()}.
-
-add_sio(Manager, Handler, Client, Sid) ->
-    gen_server:call(?MODULE, {add_sio, Manager, Handler, Client, Sid}).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc sends data from socket-io child to connection handler
-%% @since 2011-11-23 14:45
-%%
--spec sio_msg(pid(), any(), any()) -> ok.
-
-sio_msg(Client, Sid, Data) ->
-    gen_server:cast(?MODULE, {sio_msg, Client, Sid, Data}).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc deletes a process that talks to socket-io child
-%% @since 2011-11-23 13:33
-%%
--spec del_sio(pid()) -> ok.
-
-del_sio(Client) ->
-    gen_server:cast(?MODULE, {del_sio, Client}).
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc deletes a child from an appropriate list of children
 %% @since 2011-11-18 18:00
 %%
--spec del_child(pid(), 'sio'|'sjs', reference()) -> ok.
+-spec del_child(pid(), 'sjs', reference()) -> ok.
 
 del_child(Pid, Type, Ref) ->
     gen_server:cast(?MODULE, {del_child, Pid, Type, Ref}).
@@ -300,18 +254,6 @@ do_start_child(Id, Pars) ->
     supervisor:start_child(ecomet_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
-add_sio_child(St, Mgr, Handler, Client, Sid) ->
-    Pars = [
-            {sio_mgr, Mgr},
-            {sio_hdl, Handler},
-            {sio_cli, Client},
-            {sio_sid, Sid},
-            {no_local, true}, % FIXME: make it a var?
-            {type, 'sio'}
-           ],
-    add_child(St, Pars).
-
-%%-----------------------------------------------------------------------------
 -spec add_sjs_child(#csr{}, any(), any()) -> {tuple(), #csr{}}.
 
 add_sjs_child(St, Sid, Conn) ->
@@ -340,52 +282,24 @@ add_child(St, Ext_pars) ->
                         {conn, St#csr.conn},
                         {exchange_base, (St#csr.rses)#rses.exchange_base}
                         | St#csr.child_config],
-    mpln_p_debug:pr({?MODULE, "start child prepared", ?LINE, Id, Pars},
-                    St#csr.debug, child, 4),
+    mpln_p_debug:pr({?MODULE, "start child prepared", ?LINE, Id, Pars}, St#csr.debug, child, 4),
     Res = do_start_child(Id, Pars),
-    mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res},
-                    St#csr.debug, child, 4),
+    mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res}, St#csr.debug, child, 4),
     Type = proplists:get_value(type, Ext_pars),
     case Res of
         {ok, Pid} ->
-            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok',
-                {Pars, Pid}),
+            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok', {Pars, Pid}),
             New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {ok, Pid, _Info} ->
-            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok',
-                {Pars, Pid}),
+            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok', {Pars, Pid}),
             New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {error, Reason} ->
-            erpher_et:trace_me(50, ?MODULE, undefined, 'start_child_error',
-                {Pars, Reason}),
-            mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason},
-                            St#csr.debug, child, 1),
+            erpher_et:trace_me(50, ?MODULE, undefined, 'start_child_error', {Pars, Reason}),
+            mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason}, St#csr.debug, child, 1),
             check_error(St, Reason)
     end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc 
-%%
-start_socketio(#csr{socketio_config=S} = C) ->
-    Res = do_start_socketio(C, proplists:get_value(port, S)),
-    mpln_p_debug:pr({?MODULE, socketio_start, ?LINE, Res},
-                    C#csr.debug, run, 1),
-    Res.
-
-%%-----------------------------------------------------------------------------
-do_start_socketio(_C, undefined) ->
-    {error, port_undefined};
-
-do_start_socketio(_C, Port) ->
-    Mod = 'ecomet_socketio_handler',
-    {ok, Pid} = socketio_listener:start([{http_port, Port},
-                                         {default_http_handler, Mod}]),
-    EventMgr = socketio_listener:event_manager(Pid),
-    ok = gen_event:add_handler(EventMgr, Mod, []),
-    {ok, {EventMgr, Pid, self()}}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -417,7 +331,6 @@ prepare_all(C) ->
 prepare_part(#csr{log_stat_interval=T} = C) ->
     prepare_log(C),
     New = prepare_stat(C),
-    %start_socketio(C),
     ecomet_sockjs_handler:start(C),
     Tref = erlang:send_after(T * 1000, self(), periodic_send_stat),
     New#csr{timer_stat=Tref}.
@@ -479,20 +392,13 @@ reconnect(St) ->
 %% @doc adds child info into appropriate list - either web socket or long poll
 %% in dependence of given child type.
 %%
--spec add_child_list(#csr{}, 'sio' | 'sjs', pid(), reference(),
+-spec add_child_list(#csr{}, 'sjs', pid(), reference(),
                      list()) -> #csr{}.
 
 add_child_list(St, Type, Pid, Id, Pars) ->
     Id_web = proplists:get_value(id_web, Pars),
     Data = #chi{pid=Pid, id=Id, id_web=Id_web, start=now()},
     add_child_list2(St, Type, Data, Pars).
-
-add_child_list2(#csr{sio_children=C} = St, 'sio', Data, Pars) ->
-    Ev_mgr = proplists:get_value(sio_mgr, Pars),
-    Client = proplists:get_value(sio_cli, Pars),
-    Sid = proplists:get_value(sio_sid, Pars),
-    New = Data#chi{sio_mgr=Ev_mgr, sio_cli=Client, sio_sid=Sid},
-    St#csr{sio_children=[New | C]};
 
 add_child_list2(#csr{sjs_children=C} = St, 'sjs', Data, Pars) ->
     Conn = proplists:get_value(sjs_conn, Pars),
@@ -537,30 +443,12 @@ proceed_del_sjs_pid(#csr{sjs_children=L} = St, F) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc deletes and terminates socket-io related process from a list of children
-%%
-del_sio_pid(#csr{sio_children=L} = St, Pid) ->
-    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Pid}, St#csr.debug, run, 4),
-    F = fun(#chi{sio_cli=C_pid}) ->
-                C_pid == Pid
-        end,
-    {Del, Cont} = lists:partition(F, L),
-    mpln_p_debug:pr({?MODULE, del_sio_pid, ?LINE, Del, Cont}, St#csr.debug, run, 5),
-    terminate_sio_children(St, Del),
-    St#csr{sio_children = Cont}.
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc terminates sockjs or socket-io related process
 %%
 terminate_sjs_children(St, List) ->
-    terminate_sio_children(St, List).
-
-terminate_sio_children(St, List) ->
     F = fun(#chi{pid=Pid}) ->
                 Info = process_info(Pid),
-                mpln_p_debug:pr({?MODULE, terminate_sio_children, ?LINE, Info},
-                                St#csr.debug, run, 5),
+                mpln_p_debug:pr({?MODULE, terminate_children, ?LINE, Info}, St#csr.debug, run, 5),
                 ecomet_conn_server:stop(Pid)
         end,
     lists:foreach(F, List).
@@ -580,12 +468,9 @@ periodic_send_stat(#csr{timer_stat=Ref, log_stat_interval=T} = St) ->
 %%
 %% @doc sends stats to erpher_rt_stat
 %%
-send_stat(#csr{sio_children=Sio, sjs_children=Sjs}) ->
-    Len1 = length(Sio),
+send_stat(#csr{sjs_children=Sjs}) ->
     Len2 = length(Sjs),
-    erpher_rt_stat:add('ecomet', 'children', ['socketio', Len1]),
-    erpher_rt_stat:add('ecomet', 'children', ['sockjs', Len2]),
-    erpher_rt_stat:add('ecomet', 'children', ['total', Len1 + Len2]).
+    erpher_rt_stat:add('ecomet', 'children', ['sockjs', Len2]).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -624,23 +509,6 @@ process_sjs_msg(St, Sid, Conn, Data) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc creates a handler process if it's not done yet, charges the process
-%% to do the work
-%%
-process_sio_msg(St, _Client, Sid, Data) ->
-    case check_sio_child(St, Sid) of
-        {{ok, Pid}, St_c} ->
-            ecomet_conn_server:data_from_sio(Pid, Data),
-            St_c;
-        {{ok, Pid, _}, St_c} ->
-            ecomet_conn_server:data_from_sio(Pid, Data),
-            St_c;
-        {{error, _Reason}, _St_c} ->
-            St
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc checks whether the sockjs child with given id is alive. Creates
 %% the one if it's not.
 %%
@@ -655,40 +523,6 @@ check_sjs_child(#csr{sjs_children = Ch} = St, Sid, Conn) ->
             {{ok, I#chi.pid}, St};
         {false, _} ->
             add_sjs_child(St, Sid, Conn)
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc checks whether the socket-io child with given id is alive. Creates
-%% the one if it's not.
-%%
--spec check_sio_child(#csr{}, any()) ->
-                            {{ok, pid()}, #csr{}}
-                                | {{ok, pid(), any()}, #csr{}}
-                                | {{error, any()}, #csr{}}.
-
-check_sio_child(#csr{sio_children = Ch} = St, Sid) ->
-    case is_sio_child_alive(St, Ch, Sid) of
-        {true, I} ->
-            {{ok, I#chi.pid}, St};
-        {false, _} ->
-            add_sio_child(St, undefined, undefined, undefined, Sid)
-    end.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc finds socket-io child with given client id and checks whether it's
-%% alive
-%%
-is_sio_child_alive(St, List, Id) ->
-    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, List, Id}, St#csr.debug, run, 4),
-    L2 = [X || X <- List, X#chi.sio_sid == Id],
-    mpln_p_debug:pr({?MODULE, "is_sio_child_alive", ?LINE, L2, Id}, St#csr.debug, run, 4),
-    case L2 of
-        [I | _] ->
-            {is_process_alive(I#chi.pid), I};
-        _ ->
-            {false, undefined}
     end.
 
 %%-----------------------------------------------------------------------------
@@ -711,9 +545,6 @@ is_sjs_child_alive(St, List, Id) ->
 %%
 %% @doc deletes a child from a list of children
 %%
-del_child_pid(St, Pid, 'sio', _Ref) ->
-    del_sio_pid(St, Pid);
-
 del_child_pid(St, Pid, 'sjs', Ref) ->
     del_sjs_pid(St, Pid, Ref).
 

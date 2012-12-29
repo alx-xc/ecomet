@@ -75,7 +75,7 @@ handle_call(status, _From, St) ->
     {reply, St, St, St#child.economize};
 
 handle_call(get_client_id, _From, St) ->
-    ClientId = {St#child.id_s, St#child.sio_auth_host},
+    ClientId = {St#child.id_s, St#child.auth_host},
     {reply, ClientId, St};
 
 handle_call(_N, _From, St) ->
@@ -231,7 +231,7 @@ stop(Pid) ->
 %%
 -spec prepare_all(#child{}) -> #child{}.
 
-prepare_all(#child{sio_auth_recheck=T} = C) ->
+prepare_all(#child{auth_recheck=T} = C) ->
     Now = now(),
     Cq = prepare_queue(C#child{start_time=Now, last_use=Now}),
     Cid = prepare_id(Cq),
@@ -309,7 +309,7 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 -spec periodic_check(#child{}) -> #child{}.
 
 periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref,
-                      sio_auth_recheck=T} = State) ->
+                      auth_recheck=T} = State) ->
     mpln_misc_run:cancel_timer(Ref),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = State#child{queue=Qnew},
@@ -492,7 +492,7 @@ check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T,
 %%
 %% @doc performs auth check if the configured time limit is up
 %%
-check_auth(#child{sio_auth_last=Last, sio_auth_recheck=Interval} = St) ->
+check_auth(#child{auth_last=Last, auth_recheck=Interval} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, Last),
     if Delta > Interval * 1000000 ->

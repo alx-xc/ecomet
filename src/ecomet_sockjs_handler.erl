@@ -57,9 +57,8 @@
 %%
 -spec start(#csr{}) -> ok.
 
-start(#csr{sockjs_config=undefined} = C) ->
-    mpln_p_debug:pr({?MODULE, 'init, sockjs undefined', ?LINE},
-                    C#csr.debug, run, 0),
+start(#csr{sockjs_config=undefined}) ->
+    mpln_p_debug:er({?MODULE, ?LINE, 'init, sockjs undefined'}),
     ok;
 
 start(#csr{sockjs_config=Sc} = C) ->
@@ -82,7 +81,7 @@ stop() ->
 %%%----------------------------------------------------------------------------
 
 init({_Any, http}, Req, []) ->
-    error_logger:info_report({?MODULE, 'init http', ?LINE, _Any, Req}),
+    mpln_p_debug:ir({?MODULE, 'init http', ?LINE, _Any, Req}),
     {ok, Req, []}.
 
 handle(Req, State) ->
@@ -156,10 +155,8 @@ bcast(C, Conn, closed) ->
     ok;
 
 bcast(C, _Conn, _Data) ->
-    erpher_et:trace_me(50, ?MODULE, undefined, sockjs_unknown,
-        {_Conn, _Data}),
-    mpln_p_debug:pr({?MODULE, 'bcast other', ?LINE, _Conn, self(), _Data},
-                    C#csr.debug, run, 2),
+    erpher_et:trace_me(50, ?MODULE, undefined, sockjs_unknown, {_Conn, _Data}),
+    mpln_p_debug:pr({?MODULE, 'bcast other', ?LINE, _Conn, self(), _Data}, C#csr.debug, run, 2),
     ok.
 
 %%-----------------------------------------------------------------------------
@@ -182,7 +179,7 @@ prepare_base(List) ->
                             ok.
 
 prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
-    Fn = fun(X1, X2) ->
+    Fn = fun(X1, X2, _St) ->
                  bcast(C, X1, X2)
          end,
     Flogger = fun(_Service, Req, _Type) ->
@@ -191,6 +188,7 @@ prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
     StateEcho = sockjs_handler:init_state(
                   Base_p,
                   Fn,
+                  state,
                   [{cookie_needed, true},
                    {response_limit, 4096},
                    {logger, Flogger}]),
@@ -206,10 +204,8 @@ prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
 flogger(C, _Service, Req, _Type) ->
     {LongPath, Req1} = sockjs_http:path(Req),
     {Method, Req2}   = sockjs_http:method(Req1),
-    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Type, Method, LongPath},
-                    C#csr.debug, http, 3),
-    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Service, Req},
-                    C#csr.debug, http, 6),
+    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Type, Method, LongPath}, C#csr.debug, http, 3),
+    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Service, Req}, C#csr.debug, http, 6),
     Req2.
 
 %%-----------------------------------------------------------------------------
