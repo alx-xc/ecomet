@@ -185,9 +185,9 @@ find_auth_host(#child{user_data_as_auth_host=true} = St, Url) ->
     case http_uri:parse(Ustr) of
         {error, _Reason} ->
             {Url, undefined};
-        {_, User_info, _, _, _, _} when User_info == "" ->
+        {ok, {_, User_info, _, _, _, _}} when User_info == "" ->
             {Url, undefined};
-        {Scheme, User_info, Host, Port, Path, Query} ->
+        {ok, {Scheme, User_info, Host, Port, Path, Query}} ->
             Scheme_str = [atom_to_list(Scheme), "://"],
             Port_str = integer_to_list(Port),
             Str = [Scheme_str, "", Host, ":", Port_str, Path, Query],

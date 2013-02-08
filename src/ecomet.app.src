@@ -1,7 +1,7 @@
 {application, ecomet, [
     {description, "ecomet server"},
     {id, "ecomet"},
-    {vsn, "1.6.0"},
+    {vsn, "1.6.1"},
     {modules, [
         ecomet_conf,
         ecomet_conf_rabbit,
@@ -23,6 +23,6 @@
     {env, []},
     {mod, {ecomet_server_app,[]}},
     % ssl - for yaws, eworkman - for logs
-    {applications, [kernel, stdlib, ssl, erpher_rt_stat, eworkman, sockjs, cowboy, crypto, rabbit]} %rabbit
+    {applications, [kernel, stdlib, ssl, erpher_rt_stat, eworkman, sockjs, cowboy, crypto]} %rabbit
 ]}.
 

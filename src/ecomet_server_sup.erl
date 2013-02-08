@@ -12,7 +12,7 @@ init(_Args) ->
     },
     Csup = {
       ecomet_conn_sup, {ecomet_conn_sup, start_link, []},
-      transient, infinity, supervisor, [ecomet_conn_sup]
+        permanent, infinity, supervisor, [ecomet_conn_sup]
     },
     {ok, {{one_for_one, 3, 5},
           [Csup, Ch]}}.

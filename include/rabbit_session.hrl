@@ -15,12 +15,12 @@
 }).
 
 -record(conn, {
-    'channel' = false,
-    'connection' = false,
-    'consumer_tags' = [],
-    'consumer',
-    'exchange',
-    'ticket'
+    channel = false,
+    connection = false,
+    consumer_tags = [],
+    consumer,
+    exchange,
+    ticket
 }).
 
 -endif.
