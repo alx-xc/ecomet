@@ -4,7 +4,7 @@
 -export([start_link/0, init/1]).
 
 init(_Args) ->
-    {ok, {{one_for_one, 3, 5},
+    {ok, {{one_for_one, 10, 5},
         []}}.
 
 start_link() ->

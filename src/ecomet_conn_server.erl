@@ -38,12 +38,9 @@
 -export([start/0, start_link/0, start_link/1, stop/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([data_from_sio/2]).
 -export([data_from_sjs/2]).
 -export([data_from_server/2]).
--export([
-         set_jit_log_level/2
-        ]).
+-export([set_jit_log_level/2]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -52,7 +49,6 @@
 -include("ecomet_nums.hrl").
 -include("ecomet.hrl").
 -include("ecomet_child.hrl").
--include("ecomet_stat.hrl").
 -include("rabbit_session.hrl").
 -include_lib("amqp_client.hrl").
 
@@ -63,8 +59,7 @@ init([List]) ->
     process_flag(trap_exit, true), % to flush jit log messages
     C = ecomet_conf:get_child_config(List),
     New = prepare_all(C),
-    mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web}, C#child.debug, run, 1),
-    erpher_et:trace_me(45, ?MODULE, New#child.id, init, New#child.sjs_sid),
+    mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web}, C#child.debug, run, 2),
     {ok, New, New#child.economize}.
 
 %%-----------------------------------------------------------------------------
@@ -79,7 +74,7 @@ handle_call(get_client_id, _From, St) ->
     {reply, ClientId, St};
 
 handle_call(_N, _From, St) ->
-    mpln_p_debug:pr({?MODULE, call_other, ?LINE, _N}, St#child.debug, run, 2),
+    mpln_p_debug:er({?MODULE, ?LINE, handle_call_unknown, _N}),
     {reply, {error, unknown_request}, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
@@ -93,41 +88,27 @@ handle_cast({set_jit_log_level, N}, St) ->
     New = St#child{jit_log_level=N},
     {noreply, New, New#child.economize};
 
-handle_cast({data_from_server, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
-    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id}, St#child.debug, run, 2),
-    mpln_p_debug:pr({?MODULE, data_from_server, ?LINE, Id, Data}, St#child.debug, web_msg, 6),
-    erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_server, Data),
+handle_cast({data_from_server, Data}, St) ->
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
     call_gc(New),
     {noreply, New, New#child.economize};
 
-handle_cast({data_from_sjs, Data}, #child{id=Id, sjs_sid=Sid} = St) ->
-    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id}, St#child.debug, run, 2),
-    mpln_p_debug:pr({?MODULE, data_from_sjs, ?LINE, Id, Data}, St#child.debug, web_msg, 6),
-    erpher_et:trace_me(50, {?MODULE, Id}, Sid, data_from_sjs, Data),
+handle_cast({data_from_sjs, Data}, St) ->
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
     call_gc(New),
     {noreply, New, New#child.economize};
 
-handle_cast({data_from_sio, Data}, #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id}, St#child.debug, run, 2),
-    mpln_p_debug:pr({?MODULE, data_from_sio, ?LINE, Id, Data}, St#child.debug, web_msg, 6),
-    St_r = ecomet_conn_server_sio:process_sio(St, Data),
-    New = update_idle(St_r),
-    {noreply, New, New#child.economize};
-
-handle_cast(_N, #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, cast_other, ?LINE, Id, _N}, St#child.debug, run, 2),
+handle_cast(_N, St) ->
+    mpln_p_debug:er({?MODULE, ?LINE, cast_other, _N}),
     {noreply, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
 terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
-    mpln_p_debug:pr({?MODULE, ?LINE, data_from_sio, Id}, St#child.debug, run, 6),
-    erpher_et:trace_me(45, ?MODULE, Id, terminate, Sconn),
-    Res_t = ecomet_rb:teardown_tags(Conn),
-    Res_q = ecomet_rb:teardown_queues(Conn),
+    mpln_p_debug:pr({?MODULE, ?LINE, terminate, Id, Reason}, St#child.debug, run, 1),
+    ecomet_rb:teardown_tags(Conn),
+    ecomet_rb:teardown_queues(Conn),
     ecomet_server:del_child(self(), Type, Id),
     if Type == 'sjs' ->
             catch sockjs:close(3000, "conn. closed", Sconn);
@@ -135,14 +116,12 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
             ok
     end,
     ets:delete(St#child.jit_log_data),
-    mpln_p_debug:pr({?MODULE, ?LINE, terminate, Id, Reason}, St#child.debug, run, 1),
     ok.
 
 %%-----------------------------------------------------------------------------
 %% @doc message from amqp
 handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req,
             #child{id=Id} = St) ->
-    erpher_et:trace_me(30, ?MODULE, Id, 'basic.deliver', Req),
     mpln_p_debug:pr({?MODULE, deliver, ?LINE, Id, Req}, St#child.debug, rb_msg, 6),
     ecomet_rb:send_ack(St#child.conn, Tag),
     New = send_rabbit_msg(St, Req),
@@ -168,9 +147,8 @@ handle_info(periodic_check, St) ->
     {noreply, New, New#child.economize};
 
 %% @doc unknown info
-handle_info(_N, #child{id=Id} = St) ->
-    mpln_p_debug:pr({?MODULE, info_other, ?LINE, Id, _N},
-                    St#child.debug, run, 2),
+handle_info(_N, St) ->
+    mpln_p_debug:er({?MODULE, ?LINE, handle_info_unknown,  _N}),
     {noreply, St, St#child.economize}.
 
 %%-----------------------------------------------------------------------------
@@ -204,10 +182,6 @@ data_from_sjs(Pid, Data) ->
     gen_server:cast(Pid, {data_from_sjs, Data}).
 
 %%-----------------------------------------------------------------------------
-data_from_sio(Pid, Data) ->
-    gen_server:cast(Pid, {data_from_sio, Data}).
-
-%%-----------------------------------------------------------------------------
 start() ->
     start_link().
 
@@ -235,8 +209,7 @@ prepare_all(#child{auth_recheck=T} = C) ->
     Now = now(),
     Cq = prepare_queue(C#child{start_time=Now, last_use=Now}),
     Cid = prepare_id(Cq),
-    Cst = prepare_stat(Cid),
-    Cr = prepare_rabbit(Cst),
+    Cr = prepare_rabbit(Cid),
     Ci = prepare_idle_check(Cr),
     Cj = prepare_jit_log(Ci),
     Ref = erlang:send_after(T * 1000, self(), periodic_check),
@@ -270,25 +243,6 @@ prepare_queue(C) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc initializes statistic
-%%
-prepare_stat(C) ->
-    St = #stat{rabbit=
-                   {
-                 ecomet_stat:init(),
-                 ecomet_stat:init(),
-                 ecomet_stat:init()
-                },
-               wsock={
-                 ecomet_stat:init(),
-                 ecomet_stat:init(),
-                 ecomet_stat:init()
-                }
-              },
-    C#child{stat=St}.
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc prepares rabbit-mq if event is defined
 %%
 -spec prepare_rabbit(#child{}) -> #child{}.
@@ -313,7 +267,6 @@ periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref,
     mpln_misc_run:cancel_timer(Ref),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = State#child{queue=Qnew},
-    clean_jit_logs(State),
     St_a = check_auth(St_c),
     St_sent = send_queued_msg(St_a),
     mpln_p_debug:pr({?MODULE, periodic_check, ?LINE, Id, St_sent}, St_sent#child.debug, run, 7),
@@ -343,14 +296,11 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
     {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
     case ecomet_data:is_our_id(Base, Corr_msg) of
         true when No_local == true ->
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id}, St#child.debug, rb_msg, 5),
-            ecomet_stat:add_own_msg(St);
+            mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id}, St#child.debug, rb_msg, 5);
         _ ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, ?LINE, Id}, St#child.debug, rb_msg, 5),
             Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
-            St_st = ecomet_stat:add_other_msg(Stdup),
-            mpln_p_debug:pr({?MODULE, do_rabbit_msg, other_id, stat, ?LINE, Id, St_st}, St_st#child.debug, stat, 6),
-            proceed_send(St_st, Dinfo, Payload)
+            proceed_send(Stdup, Dinfo, Payload)
     end.
 
 %%-----------------------------------------------------------------------------
@@ -527,32 +477,5 @@ call_gc(_) ->
 fetch_cowboy(List) ->
     Info_list = [{X, process_info(X, initial_call)} || X <- List],
     [X || {X, {initial_call,{cowboy_http_protocol,init,_}}} <- Info_list].
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc send jit log data to stat server if there is an error signs
-%% or configured jit log level is high enough
-%%
-send_jit_log(_Reason, #child{jit_log_status=error} = St) ->
-    erpher_jit_log:send_jit_log(error,
-                                St#child.jit_log_level,
-                                St#child.jit_log_data,
-                                St#child.id
-                               );
-
-send_jit_log(Reason, St) ->
-    erpher_jit_log:send_jit_log(Reason,
-                                St#child.jit_log_level,
-                                St#child.jit_log_data,
-                                St#child.id
-                               ).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc clean extra jit log messages basing on time and amount
-%%
-clean_jit_logs(#child{jit_log_data=Tid, jit_log_keep_n=Limit_n,
-                     jit_log_keep_time=Limit_t}) ->
-    erpher_jit_log:clean_jit_logs(Tid, Limit_n, Limit_t).
 
 %%-----------------------------------------------------------------------------

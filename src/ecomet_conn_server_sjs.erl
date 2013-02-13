@@ -93,12 +93,9 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
     Data = get_json_body(Bin),
     case ecomet_data_msg:get_auth_info(Data) of
         undefined when Uid == undefined ->
-            erpher_et:trace_me(50, ?MODULE, Id, 'undefined uid', Bin),
             mpln_p_debug:pr({?MODULE, 'process_msg', ?LINE, 'no auth data', Id}, St#child.debug, run, 4),
             St;
         undefined ->
-            erpher_et:trace_me(40, {?MODULE, Id}, Uid, 'use_current_exchange',
-                Bin),
             Type = ecomet_data_msg:get_type(Data),
             proceed_type_msg(St, use_current_exchange, Type, Data,
                              <<"use_current_exchange">>);
@@ -246,7 +243,6 @@ make_req(Url, Hdr) ->
 %% @doc checks auth data received from auth server
 %%
 proceed_auth_msg(#child{id=Id} = St, {ok, Info}, Data) ->
-    erpher_et:trace_me(35, ?MODULE, Id, 'auth http ok', Data),
     {Uid, Exch} = process_auth_resp(St, Info),
     Type = ecomet_data_msg:get_type(Data),
     proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data, Info);
@@ -256,7 +252,6 @@ proceed_auth_msg(#child{id=Id,
                         auth_host=Host,
                         auth_cookie=Cookie
                        } = St, {error, Reason}, _Data) ->
-    erpher_et:trace_me(45, ?MODULE, Id, 'auth http error', Reason),
     Bin = mpln_misc_web:make_term2_binary(Reason),
     Short = mpln_misc_web:sub_bin(Bin),
     erpher_jit_log:add_jit_msg(St#child.jit_log_data, Id, 'auth', 3, ['http_error', Url, Host, Cookie, Short]),

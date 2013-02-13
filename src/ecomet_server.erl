@@ -39,16 +39,10 @@
 -export([start/0, start_link/0, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
--export([add_rabbit_inc_own_stat/0, add_rabbit_inc_other_stat/0]).
 -export([del_child/3]).
 -export([sjs_add/2, sjs_del/2, sjs_msg/3]).
 -export([sjs_broadcast_msg/1]).
--export([get_stat_raw/0]).
--export([
-    reload_config_signal/0,
-         get_stat_procs/0,
-         get_stat_procs_mem/0
-        ]).
+-export([reload_config_signal/0, get_stat_procs/0, get_stat_procs_mem/0]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -57,7 +51,6 @@
 -include("ecomet.hrl").
 -include("ecomet_nums.hrl").
 -include("ecomet_server.hrl").
--include("ecomet_stat.hrl").
 -include("rabbit_session.hrl").
 
 %%%----------------------------------------------------------------------------
@@ -83,17 +76,17 @@ handle_call(status, _From, St) ->
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 handle_call(_N, _From, St) ->
+    erlang:display({?MODULE, ?LINE, unknown_request, _N}),
+    {reply, {error, unknown_request}, St}.
+
+handle_call(_N, St) ->
+    erlang:display({?MODULE, ?LINE, unknown_request, _N}),
     {reply, {error, unknown_request}, St}.
 
 %%-----------------------------------------------------------------------------
 handle_cast(stop, St) ->
     {stop, normal, St};
-handle_cast(add_rabbit_inc_other_stat, St) ->
-    New = add_msg_stat(St, inc_other),
-    {noreply, New};
-handle_cast(add_rabbit_inc_own_stat, St) ->
-    New = add_msg_stat(St, inc_own),
-    {noreply, New};
+
 handle_cast({del_child, Pid, Type, Ref}, St) ->
     New = del_child_pid(St, Pid, Type, Ref),
     {noreply, New};
@@ -105,22 +98,18 @@ handle_cast({set_jit_log_level, N}, St) ->
 
 handle_cast({sjs_add, Sid, Conn}, St) ->
     mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid}, St#csr.debug, run, 2),
-    erpher_et:trace_me(45, ?MODULE, undefined, sockjs_add_child, Sid),
-    {_Res, New} = add_sjs_child(St, Sid, Conn),
-    {noreply, New};
+    {_Res, St_new} = add_sjs_child(St, Sid, Conn),
+    {noreply, St_new};
 
 handle_cast({sjs_del, Sid, Conn}, St) ->
-    erpher_et:trace_me(45, ?MODULE, undefined, sockjs_del_child, Sid),
     New = del_sjs_pid2(St, Sid, Conn),
     {noreply, New};
 
 handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
-    erpher_et:trace_me(40, ?MODULE, undefined, sockjs_message, {Sid, Data}),
     New = process_sjs_msg(St, Sid, Conn, Data),
     {noreply, New};
 
 handle_cast({sjs_broadcast_msg, Data}, St) ->
-    erpher_et:trace_me(40, ?MODULE, undefined, sockjs_broadcast_message, Data),
     New = process_sjs_broadcast_msg(St, Data),
     {noreply, New};
 
@@ -133,6 +122,7 @@ handle_cast(_, St) ->
 
 %%-----------------------------------------------------------------------------
 terminate(_Reason, St) ->
+    erlang:display({?MODULE, ?LINE, terminate, _Reason}),
     ecomet_rb:teardown(St#csr.conn),
     ecomet_sockjs_handler:stop(),
     mpln_p_debug:pr({?MODULE, 'terminate', ?LINE, _Reason}, St#csr.debug, run, 1),
@@ -143,7 +133,8 @@ handle_info(periodic_send_stat, State) ->
     New = periodic_send_stat(State),
     {noreply, New};
 
-handle_info(_, State) ->
+handle_info(_N, State) ->
+    erlang:display({?MODULE, ?LINE, unknown_request, _N}),
     {noreply, State}.
 
 %%-----------------------------------------------------------------------------
@@ -205,28 +196,6 @@ del_child(Pid, Type, Ref) ->
     gen_server:cast(?MODULE, {del_child, Pid, Type, Ref}).
 
 %%-----------------------------------------------------------------------------
-%%
-%% @doc updates statistic messages
-%% @since 2011-10-28 16:21
-%%
--spec add_rabbit_inc_own_stat() -> ok.
-
-add_rabbit_inc_own_stat() ->
-    gen_server:cast(?MODULE, add_rabbit_inc_own_stat).
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc updates statistic messages
-%% @since 2011-10-28 16:21
-%%
--spec add_rabbit_inc_other_stat() -> ok.
-
-add_rabbit_inc_other_stat() ->
-    gen_server:cast(?MODULE, add_rabbit_inc_other_stat).
-
-%%-----------------------------------------------------------------------------
-get_stat_raw() ->
-    gen_server:call(?MODULE, {get_stat, raw}).
 
 get_stat_procs() ->
     gen_server:call(?MODULE, {get_stat, procs}).
@@ -250,21 +219,20 @@ reload_config_signal() ->
 do_start_child(Id, Pars) ->
     Ch_conf = [Pars],
     StartFunc = {ecomet_conn_server, start_link, [Ch_conf]},
-    Child = {Id, StartFunc, temporary, 1000, worker, [ecomet_conn_server]},
+    Child = {Id, StartFunc, temporary, 200, worker, [ecomet_conn_server]},
     supervisor:start_child(ecomet_conn_sup, Child).
 
 %%-----------------------------------------------------------------------------
 -spec add_sjs_child(#csr{}, any(), any()) -> {tuple(), #csr{}}.
 
 add_sjs_child(St, Sid, Conn) ->
-    New = add_msg_stat(St, 'sjs_child'),
     Pars = [
             {sjs_sid, Sid},
             {sjs_conn, Conn},
             {no_local, true}, % FIXME: make it a var?
             {type, 'sjs'}
            ],
-    add_child(New, Pars).
+    add_child(St, Pars).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -288,16 +256,13 @@ add_child(St, Ext_pars) ->
     Type = proplists:get_value(type, Ext_pars),
     case Res of
         {ok, Pid} ->
-            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok', {Pars, Pid}),
             New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {ok, Pid, _Info} ->
-            erpher_et:trace_me(45, ?MODULE, undefined, 'start_child_ok', {Pars, Pid}),
             New_st = add_child_list(St, Type, Pid, Id, Ext_pars),
             {Res, New_st};
         {error, Reason} ->
-            erpher_et:trace_me(50, ?MODULE, undefined, 'start_child_error', {Pars, Reason}),
-            mpln_p_debug:pr({?MODULE, "start child error", ?LINE, Reason}, St#csr.debug, child, 1),
+            mpln_p_debug:er({?MODULE, ?LINE, "start child error", Reason}),
             check_error(St, Reason)
     end.
 
@@ -330,10 +295,9 @@ prepare_all(C) ->
 
 prepare_part(#csr{log_stat_interval=T} = C) ->
     prepare_log(C),
-    New = prepare_stat(C),
     ecomet_sockjs_handler:start(C),
     Tref = erlang:send_after(T * 1000, self(), periodic_send_stat),
-    New#csr{timer_stat=Tref}.
+    C#csr{timer_stat=Tref}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -347,35 +311,18 @@ prepare_rabbit(C) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc initializes statistic
-%%
-prepare_stat(C) ->
-    St = #stat{rabbit=
-                   {
-                 ecomet_stat:init(),
-                 ecomet_stat:init(),
-                 ecomet_stat:init()
-                },
-               wsock={
-                 ecomet_stat:init(),
-                 ecomet_stat:init(),
-                 ecomet_stat:init()
-                }
-              },
-    C#csr{stat=St}.
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc tries to reconnect to rabbit in case of do_start_child returns noproc,
 %% which means the connection to rabbit is closed.
 %% @todo decide which policy is better - connection restart or terminate itself
 %%
 check_error(St, {{noproc, _Reason}, _Other}) ->
+    erlang:display({?MODULE, ?LINE}),
     mpln_p_debug:pr({?MODULE, "check_error", ?LINE}, St#csr.debug, run, 3),
     New = reconnect(St),
     mpln_p_debug:pr({?MODULE, "check_error new st", ?LINE, New}, St#csr.debug, run, 6),
     {{error, noproc}, New};
 check_error(St, Other) ->
+    erlang:display({?MODULE, ?LINE}),
     mpln_p_debug:pr({?MODULE, "check_error other", ?LINE}, St#csr.debug, run, 3),
     {{error, Other}, St}.
 
@@ -405,12 +352,6 @@ add_child_list2(#csr{sjs_children=C} = St, 'sjs', Data, Pars) ->
     Sid = proplists:get_value(sjs_sid, Pars),
     New = Data#chi{sjs_conn=Conn, sjs_sid=Sid},
     St#csr{sjs_children=[New | C]}.
-
-%%-----------------------------------------------------------------------------
-add_msg_stat(#csr{stat=#stat{rabbit=Rb_stat} = Stat} = State, Tag) ->
-    New_rb_stat = ecomet_stat:add_server_stat(Rb_stat, Tag),
-    New_stat = Stat#stat{rabbit=New_rb_stat},
-    State#csr{stat = New_stat}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -477,9 +418,8 @@ send_stat(#csr{sjs_children=Sjs}) ->
 %% @doc sends data to every sockjs child
 %%
 process_sjs_broadcast_msg(#csr{sjs_children=Ch} = St, Data) ->
-    New = add_msg_stat(St, 'broadcast'),
     [ecomet_conn_server:data_from_server(Pid, Data) || #chi{pid=Pid} <- Ch],
-    New.
+    St.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -548,14 +488,6 @@ is_sjs_child_alive(St, List, Id) ->
 del_child_pid(St, Pid, 'sjs', Ref) ->
     del_sjs_pid(St, Pid, Ref).
 
-%%-----------------------------------------------------------------------------
-%%
-%% @doc returns accumulated statistic as a list of tuples
-%% {atom(), dictionary()}, where dictionary is a dict of {time, tag} -> amount
-%%
-prepare_stat_result(#csr{stat=Stat}, raw) ->
-    [{wsock, Stat#stat.wsock}, {rabbit, Stat#stat.rabbit}];
-
 %%
 %% @doc returns number of running comet processes
 %%
@@ -569,7 +501,7 @@ prepare_stat_result(#csr{sjs_children=Ch}, procs) ->
 %%
 prepare_stat_result(#csr{sjs_children=Ch}, procs_mem) ->
     Len = length(Ch),
-    Cid = [gen_server:call(X#chi.pid, get_client_id) || X <- Ch],
+    Cid = [catch gen_server:call(X#chi.pid, get_client_id) || X <- Ch],
     Clients_count = sets:size(sets:from_list(Cid)),
     Pids = [X#chi.pid || X <- Ch],
     Sum = estat_misc:fetch_sum_pids_memory(Pids),
@@ -619,7 +551,6 @@ process_sjs_multicast_msg(#csr{sjs_children=[]} = St, _) ->
 
 process_sjs_multicast_msg(#csr{smoke_test={random, N}, sjs_children=Ch} = St,
                           Data) ->
-    New = add_msg_stat(St, 'multicast'),
     Len = length(Ch),
     F = fun(_) ->
         Idx = crypto:rand_uniform(0, Len),
@@ -627,7 +558,7 @@ process_sjs_multicast_msg(#csr{smoke_test={random, N}, sjs_children=Ch} = St,
         ecomet_conn_server:data_from_sjs(Pid, Data)
     end,
     lists:foreach(F, lists:duplicate(N, true)),
-    New.
+    St.
 
 %%-----------------------------------------------------------------------------
 %%

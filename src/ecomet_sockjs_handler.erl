@@ -69,7 +69,7 @@ start(#csr{sockjs_config=Sc} = C) ->
     {Base, Base_p} = prepare_base(Sc),
     Trans_opt = [{port, Port}, {max_connections, Max_conn}],
     prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opt),
-    mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 1),
+    mpln_p_debug:pr({?MODULE, 'init done', ?LINE, Port}, C#csr.debug, run, 2),
     ok.
 
 stop() ->
@@ -136,27 +136,23 @@ module_path() ->
 bcast(C, Conn, {recv, Data}) ->
     mpln_p_debug:pr({?MODULE, 'bcast recv', ?LINE, Conn, self(), Data}, C#csr.debug, run, 4),
     Sid = Conn,
-    erpher_et:trace_me(40, ?MODULE, ecomet_server, sockjs_recv, {Sid, Data}),
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok;
 
 bcast(C, Conn, init) ->
     mpln_p_debug:pr({?MODULE, 'bcast init', ?LINE, Conn, self()}, C#csr.debug, run, 3),
     Sid = Conn,
-    erpher_et:trace_me(45, ?MODULE, ecomet_server, sockjs_init, Sid),
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
 bcast(C, Conn, closed) ->
     mpln_p_debug:pr({?MODULE, 'bcast closed', ?LINE, Conn, self()}, C#csr.debug, run, 3),
     Sid = Conn,
-    erpher_et:trace_me(45, ?MODULE, ecomet_server, sockjs_closed, Sid),
     ecomet_server:sjs_del(Sid, Conn),
     ok;
 
 bcast(C, _Conn, _Data) ->
-    erpher_et:trace_me(50, ?MODULE, undefined, sockjs_unknown, {_Conn, _Data}),
-    mpln_p_debug:pr({?MODULE, 'bcast other', ?LINE, _Conn, self(), _Data}, C#csr.debug, run, 2),
+    mpln_p_debug:er({?MODULE, ?LINE, 'bcast unknown', _Conn, _Data}),
     ok.
 
 %%-----------------------------------------------------------------------------
@@ -183,7 +179,8 @@ prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
                  bcast(C, X1, X2)
          end,
     Flogger = fun(_Service, Req, _Type) ->
-                      flogger(C, _Service, Req, _Type)
+                      Req
+                      %flogger(C, _Service, Req, _Type)
               end,
     StateEcho = sockjs_handler:init_state(
                   Base_p,
@@ -191,7 +188,8 @@ prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
                   state,
                   [{cookie_needed, true},
                    {response_limit, 4096},
-                   {logger, Flogger}]),
+                   {logger, Flogger}
+                  ]),
     VRoutes = [{[Base, '...'], sockjs_cowboy_handler, StateEcho},
                {'_', ?MODULE, []}],
     Routes = [{'_',  VRoutes}], % any vhost
