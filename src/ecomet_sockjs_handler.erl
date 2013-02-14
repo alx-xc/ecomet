@@ -81,7 +81,7 @@ stop() ->
 %%%----------------------------------------------------------------------------
 
 init({_Any, http}, Req, []) ->
-    mpln_p_debug:ir({?MODULE, 'init http', ?LINE, _Any, Req}),
+    mpln_p_debug:ir({?MODULE, ?LINE, init_http, _Any, Req}),
     {ok, Req, []}.
 
 handle(Req, State) ->
@@ -133,25 +133,22 @@ module_path() ->
 %%
 %% @doc handler of sockjs messages: init, recv, closed.
 %%
-bcast(C, Conn, {recv, Data}) ->
-    mpln_p_debug:pr({?MODULE, 'bcast recv', ?LINE, Conn, self(), Data}, C#csr.debug, run, 4),
+bcast(Conn, {recv, Data}, _St) ->
     Sid = Conn,
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok;
 
-bcast(C, Conn, init) ->
-    mpln_p_debug:pr({?MODULE, 'bcast init', ?LINE, Conn, self()}, C#csr.debug, run, 3),
+bcast(Conn, init, _St) ->
     Sid = Conn,
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
-bcast(C, Conn, closed) ->
-    mpln_p_debug:pr({?MODULE, 'bcast closed', ?LINE, Conn, self()}, C#csr.debug, run, 3),
+bcast(Conn, closed, _St) ->
     Sid = Conn,
     ecomet_server:sjs_del(Sid, Conn),
     ok;
 
-bcast(C, _Conn, _Data) ->
+bcast(_Conn, _Data, _St) ->
     mpln_p_debug:er({?MODULE, ?LINE, 'bcast unknown', _Conn, _Data}),
     ok.
 
@@ -175,16 +172,13 @@ prepare_base(List) ->
                             ok.
 
 prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
-    Fn = fun(X1, X2, _St) ->
-                 bcast(C, X1, X2)
-         end,
     Flogger = fun(_Service, Req, _Type) ->
                       Req
                       %flogger(C, _Service, Req, _Type)
               end,
     StateEcho = sockjs_handler:init_state(
                   Base_p,
-                  Fn,
+                  fun bcast/3,
                   state,
                   [{cookie_needed, true},
                    {response_limit, 4096},

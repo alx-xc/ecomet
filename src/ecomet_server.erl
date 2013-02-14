@@ -76,11 +76,11 @@ handle_call(status, _From, St) ->
 handle_call(stop, _From, St) ->
     {stop, normal, ok, St};
 handle_call(_N, _From, St) ->
-    erlang:display({?MODULE, ?LINE, unknown_request, _N}),
+    mpln_p_debug:er({?MODULE, ?LINE, unknown_request, _N}),
     {reply, {error, unknown_request}, St}.
 
 handle_call(_N, St) ->
-    erlang:display({?MODULE, ?LINE, unknown_request, _N}),
+    mpln_p_debug:er({?MODULE, ?LINE, unknown_request, _N}),
     {reply, {error, unknown_request}, St}.
 
 %%-----------------------------------------------------------------------------
@@ -97,7 +97,6 @@ handle_cast({set_jit_log_level, N}, St) ->
     {noreply, St};
 
 handle_cast({sjs_add, Sid, Conn}, St) ->
-    mpln_p_debug:pr({?MODULE, 'add_sjs_child', ?LINE, Sid}, St#csr.debug, run, 2),
     {_Res, St_new} = add_sjs_child(St, Sid, Conn),
     {noreply, St_new};
 
@@ -122,19 +121,14 @@ handle_cast(_, St) ->
 
 %%-----------------------------------------------------------------------------
 terminate(_Reason, St) ->
-    erlang:display({?MODULE, ?LINE, terminate, _Reason}),
+    mpln_p_debug:er({?MODULE, ?LINE, terminate, _Reason}),
     ecomet_rb:teardown(St#csr.conn),
     ecomet_sockjs_handler:stop(),
-    mpln_p_debug:pr({?MODULE, 'terminate', ?LINE, _Reason}, St#csr.debug, run, 1),
     ok.
 
-%%-----------------------------------------------------------------------------
-handle_info(periodic_send_stat, State) ->
-    New = periodic_send_stat(State),
-    {noreply, New};
-
+%%----------------------------------------------------------------------------
 handle_info(_N, State) ->
-    erlang:display({?MODULE, ?LINE, unknown_request, _N}),
+    mpln_p_debug:er({?MODULE, ?LINE, unknown_request, _N}),
     {noreply, State}.
 
 %%-----------------------------------------------------------------------------
@@ -217,8 +211,7 @@ reload_config_signal() ->
                             {ok, pid()} | {ok, pid(), any()} | {error, any()}.
 
 do_start_child(Id, Pars) ->
-    Ch_conf = [Pars],
-    StartFunc = {ecomet_conn_server, start_link, [Ch_conf]},
+    StartFunc = {ecomet_conn_server, start_link, [[Pars]]},
     Child = {Id, StartFunc, temporary, 200, worker, [ecomet_conn_server]},
     supervisor:start_child(ecomet_conn_sup, Child).
 
@@ -250,9 +243,7 @@ add_child(St, Ext_pars) ->
                         {conn, St#csr.conn},
                         {exchange_base, (St#csr.rses)#rses.exchange_base}
                         | St#csr.child_config],
-    mpln_p_debug:pr({?MODULE, "start child prepared", ?LINE, Id, Pars}, St#csr.debug, child, 4),
     Res = do_start_child(Id, Pars),
-    mpln_p_debug:pr({?MODULE, "start child result", ?LINE, Id, Pars, Res}, St#csr.debug, child, 4),
     Type = proplists:get_value(type, Ext_pars),
     case Res of
         {ok, Pid} ->
@@ -293,11 +284,10 @@ prepare_all(C) ->
 %%
 -spec prepare_part(#csr{}) -> #csr{}.
 
-prepare_part(#csr{log_stat_interval=T} = C) ->
+prepare_part(C) ->
     prepare_log(C),
     ecomet_sockjs_handler:start(C),
-    Tref = erlang:send_after(T * 1000, self(), periodic_send_stat),
-    C#csr{timer_stat=Tref}.
+    C.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -316,14 +306,11 @@ prepare_rabbit(C) ->
 %% @todo decide which policy is better - connection restart or terminate itself
 %%
 check_error(St, {{noproc, _Reason}, _Other}) ->
-    erlang:display({?MODULE, ?LINE}),
-    mpln_p_debug:pr({?MODULE, "check_error", ?LINE}, St#csr.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, check_error, ?LINE}, St#csr.debug, run, 3),
     New = reconnect(St),
-    mpln_p_debug:pr({?MODULE, "check_error new st", ?LINE, New}, St#csr.debug, run, 6),
     {{error, noproc}, New};
 check_error(St, Other) ->
-    erlang:display({?MODULE, ?LINE}),
-    mpln_p_debug:pr({?MODULE, "check_error other", ?LINE}, St#csr.debug, run, 3),
+    mpln_p_debug:pr({?MODULE, check_error_other, ?LINE}, St#csr.debug, run, 3),
     {{error, Other}, St}.
 
 %%-----------------------------------------------------------------------------
@@ -396,25 +383,6 @@ terminate_sjs_children(St, List) ->
 
 %%-----------------------------------------------------------------------------
 %%
-%% @doc sends stats and prepares timer for the next sending
-%%
-periodic_send_stat(#csr{timer_stat=Ref, log_stat_interval=T} = St) ->
-    mpln_p_debug:pr({?MODULE, periodic_send_stat, ?LINE}, St#csr.debug, run, 6),
-    mpln_misc_run:cancel_timer(Ref),
-    send_stat(St),
-    Nref = erlang:send_after(T * 1000, self(), periodic_send_stat),
-    St#csr{timer_stat=Nref}.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc sends stats to erpher_rt_stat
-%%
-send_stat(#csr{sjs_children=Sjs}) ->
-    Len2 = length(Sjs),
-    erpher_rt_stat:add('ecomet', 'children', ['sockjs', Len2]).
-
-%%-----------------------------------------------------------------------------
-%%
 %% @doc sends data to every sockjs child
 %%
 process_sjs_broadcast_msg(#csr{sjs_children=Ch} = St, Data) ->
@@ -471,7 +439,6 @@ check_sjs_child(#csr{sjs_children = Ch} = St, Sid, Conn) ->
 %% alive
 %%
 is_sjs_child_alive(St, List, Id) ->
-    mpln_p_debug:pr({?MODULE, "is_sjs_child_alive", ?LINE, List, Id}, St#csr.debug, run, 4),
     L2 = [X || X <- List, X#chi.sjs_sid == Id],
     mpln_p_debug:pr({?MODULE, "is_sjs_child_alive", ?LINE, L2, Id}, St#csr.debug, run, 4),
     case L2 of

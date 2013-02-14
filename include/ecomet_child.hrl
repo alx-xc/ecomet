@@ -36,13 +36,7 @@
     timer :: reference(), % timer for periodic checks
     timer_idle :: reference(), % timer for idle checks
     economize  :: hibernate | infinity, % gen_server default policy
-    deep_memory_economize = true :: boolean(), % call gc on linked cowboy pids
-    stat, % #stat{}
-    jit_log_keep_n :: non_neg_integer(),
-    jit_log_keep_time :: non_neg_integer(),
-    jit_log_level = 0 :: integer(), % jit log level
-    jit_log_status    :: ok | error,
-    jit_log_data % ets table id
+    deep_memory_economize = true :: boolean() % call gc on linked cowboy pids
 }).
 
 -endif.
