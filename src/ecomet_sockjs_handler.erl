@@ -135,16 +135,19 @@ module_path() ->
 %%
 bcast(Conn, {recv, Data}, _St) ->
     Sid = Conn,
+    erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast recv', Data),
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok;
 
 bcast(Conn, init, _St) ->
     Sid = Conn,
+    erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast init'),
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
 bcast(Conn, closed, _St) ->
     Sid = Conn,
+    erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast closed'),
     ecomet_server:sjs_del(Sid, Conn),
     ok;
 

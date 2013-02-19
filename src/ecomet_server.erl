@@ -91,21 +91,22 @@ handle_cast({del_child, Pid, Type, Ref}, St) ->
     New = del_child_pid(St, Pid, Type, Ref),
     {noreply, New};
 
-handle_cast({set_jit_log_level, N}, St) ->
-    %% no api, use message passing
-    set_jit_log_level(St, N),
-    {noreply, St};
-
 handle_cast({sjs_add, Sid, Conn}, St) ->
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast add start', {?MODULE, ?LINE}),
     {_Res, St_new} = add_sjs_child(St, Sid, Conn),
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast add finish', {?MODULE, ?LINE}),
     {noreply, St_new};
 
 handle_cast({sjs_del, Sid, Conn}, St) ->
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast del start', {?MODULE, ?LINE}),
     New = del_sjs_pid2(St, Sid, Conn),
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast del finish', {?MODULE, ?LINE}),
     {noreply, New};
 
 handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast msg start', {?MODULE, ?LINE}),
     New = process_sjs_msg(St, Sid, Conn, Data),
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast msg finish', {?MODULE, ?LINE}),
     {noreply, New};
 
 handle_cast({sjs_broadcast_msg, Data}, St) ->
@@ -386,6 +387,7 @@ terminate_sjs_children(St, List) ->
 %% @doc sends data to every sockjs child
 %%
 process_sjs_broadcast_msg(#csr{sjs_children=Ch} = St, Data) ->
+    erpher_et:trace_me(50, ?MODULE, ecomet_conn_server, data_from_server, {?MODULE, ?LINE, length(Ch)}),
     [ecomet_conn_server:data_from_server(Pid, Data) || #chi{pid=Pid} <- Ch],
     St.
 
@@ -406,9 +408,11 @@ process_sjs_msg(#csr{smoke_test=broadcast} = St, _Sid, _Conn, Data) ->
 process_sjs_msg(St, Sid, Conn, Data) ->
     case check_sjs_child(St, Sid, Conn) of
         {{ok, Pid}, St_c} ->
+            erpher_et:trace_me(50, ?MODULE, ecomet_conn_server, data_from_sjs, {?MODULE, ?LINE}),
             ecomet_conn_server:data_from_sjs(Pid, Data),
             St_c;
         {{ok, Pid, _}, St_c} ->
+            erpher_et:trace_me(50, ?MODULE, ecomet_conn_server, data_from_sjs, {?MODULE, ?LINE}),
             ecomet_conn_server:data_from_sjs(Pid, Data),
             St_c;
         {{error, _Reason}, _St_c} ->
@@ -526,12 +530,5 @@ process_sjs_multicast_msg(#csr{smoke_test={random, N}, sjs_children=Ch} = St,
     end,
     lists:foreach(F, lists:duplicate(N, true)),
     St.
-
-%%-----------------------------------------------------------------------------
-%%
-%% @doc set new jit log level for all sockjs children
-%%
-set_jit_log_level(#csr{sjs_children=Ch}, N) ->
-    [ecomet_conn_server:set_jit_log_level(Pid, N) || #chi{pid=Pid} <- Ch].
 
 %%-----------------------------------------------------------------------------

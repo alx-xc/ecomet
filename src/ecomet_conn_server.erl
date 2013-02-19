@@ -84,12 +84,14 @@ handle_cast(st0p, St) ->
     St;
 
 handle_cast({data_from_server, Data}, St) ->
+    erpher_et:trace_me(50, ?MODULE, ecomet_conn_server_sjs, process_msg_from_server, {?MODULE, ?LINE}),
     St_r = ecomet_conn_server_sjs:process_msg_from_server(St, Data),
     New = update_idle(St_r),
     call_gc(New),
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sjs, Data}, St) ->
+    erpher_et:trace_me(50, ?MODULE, ecomet_conn_server_sjs, process_msg, {?MODULE, ?LINE}),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
     New = update_idle(St_r),
     call_gc(New),
@@ -109,6 +111,7 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
     ecomet_rb:teardown_queues(Conn),
     ecomet_server:del_child(self(), Type, Id),
     if Type == 'sjs' ->
+            erpher_et:trace_me(50, ?MODULE, sockjs, close, {?MODULE, ?LINE}),
             catch sockjs:close(3000, "conn. closed", Sconn);
        true ->
             ok
@@ -118,13 +121,14 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
 %%-----------------------------------------------------------------------------
 %% @doc message from amqp
 handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req, St) ->
+    erpher_et:trace_me(50, ?MODULE, ecomet_rb, send_ack, {?MODULE, ?LINE, Tag}),
     ecomet_rb:send_ack(St#child.conn, Tag),
     New = send_rabbit_msg(St, Req),
     {noreply, New, New#child.economize};
 
 %% @doc amqp setup consumer confirmation. In fact, unnecessary for case
 %% of list of consumers
-handle_info(#'basic.consume_ok'{consumer_tag = Tag}, St) ->
+handle_info(#'basic.consume_ok'{consumer_tag = _Tag}, St) ->
     New = St#child{conn=(St#child.conn)#conn{consumer=ok}},
     {noreply, New, New#child.economize};
 
@@ -227,7 +231,7 @@ prepare_queue(C) ->
 -spec prepare_rabbit(#child{}) -> #child{}.
 
 prepare_rabbit(#child{event=undefined} = C) ->
-    % exchanges and queues will be created on web messages data
+% exchanges and queues will be created on web messages data
     C;
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     New_conn = ecomet_rb:prepare_queue_bind_one(Conn, Event, No_local),
@@ -240,11 +244,12 @@ prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
 %%
 -spec periodic_check(#child{}) -> #child{}.
 
-periodic_check(#child{id=Id, queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref,
-                      auth_recheck=T} = State) ->
+periodic_check(#child{queue=Q, qmax_dur=Dur, qmax_len=Max, timer=Ref,
+auth_recheck=T} = State) ->
     mpln_misc_run:cancel_timer(Ref),
     Qnew = clean_queue(Q, Dur, Max),
     St_c = State#child{queue=Qnew},
+    erpher_et:trace_me(50, {?MODULE, self()}, {?MODULE, self()}, check_auth),
     St_a = check_auth(St_c),
     St_sent = send_queued_msg(St_a),
     Nref = erlang:send_after(T * 1000, self(), periodic_check),
@@ -267,14 +272,14 @@ prepare_id(St) ->
 %%
 -spec send_rabbit_msg(#child{}, {#'basic.deliver'{}, any()}) -> #child{}.
 
-send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
-                {Dinfo, Content} = Req) ->
+send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, {Dinfo, Content}) ->
     {Payload, Corr_msg} = ecomet_rb:get_content_data(Content),
     case ecomet_data:is_our_id(Base, Corr_msg) of
         true when No_local == true ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id}, St#child.debug, rb_msg, 5);
         _ ->
             Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
+            erpher_et:trace_me(50, ?MODULE, ?MODULE, proceed_send, {?MODULE, ?LINE}),
             proceed_send(Stdup, Dinfo, Payload)
     end.
 
@@ -284,7 +289,8 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St,
 %% in a queue for later fetching it by long polling
 %%
 proceed_send(#child{type=sjs} = St, #'basic.deliver'{routing_key=Key},
-             Content) ->
+    Content) ->
+    erpher_et:trace_me(50, ?MODULE, ecomet_conn_server_sjs, send, {?MODULE, ?LINE}),
     ecomet_conn_server_sjs:send(St, Key, Content).
 
 %%-----------------------------------------------------------------------------
@@ -304,8 +310,8 @@ clean_queue(Q, Dur, Max) ->
 clean_queue_by_time(Q, Dur) ->
     Now = now(),
     F = fun({Time, _Data}) ->
-                timer:now_diff(Now, Time) < Dur
-        end,
+        timer:now_diff(Now, Time) < Dur
+    end,
     queue:filter(F, Q).
 
 %%-----------------------------------------------------------------------------
@@ -315,13 +321,13 @@ clean_queue_by_time(Q, Dur) ->
 clean_queue_by_len(Q, Max) ->
     Len = queue:len(Q),
     if Len > Max ->
-            F = fun(_, Qacc) ->
-                        {_, Qres} = queue:out(Qacc),
-                        Qres
-                end,
-            Delta = Len - Max,
-            lists:foldl(F, Q, lists:duplicate(Delta, true));
-       true ->
+        F = fun(_, Qacc) ->
+            {_, Qres} = queue:out(Qacc),
+            Qres
+        end,
+        Delta = Len - Max,
+        lists:foldl(F, Q, lists:duplicate(Delta, true));
+        true ->
             Q
     end.
 
@@ -342,10 +348,10 @@ send_one_response(St, #cli{from=Client}, Item) ->
 %%
 make_response({_Time, Data}) ->
     Body = <<
-             "<pre>",
-             Data/binary,
-             "</pre>"
-           >>,
+    "<pre>",
+    Data/binary,
+    "</pre>"
+    >>,
     {ok, Body}.
 
 %%-----------------------------------------------------------------------------
@@ -387,23 +393,20 @@ update_idle(St) ->
 %% configured limit. Does not check socket-io processes. Does not check
 %% in case of undefined limit
 %%
-check_idle(#child{type='sio'} = St) ->
-    St;
-
 check_idle(#child{idle_timeout=undefined} = St) ->
     St;
 
 check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T,
-                 timer_idle=Ref} = St) ->
+timer_idle=Ref} = St) ->
     mpln_misc_run:cancel_timer(Ref),
     Now = now(),
     Delta = timer:now_diff(Now, T),
     if Delta > Idle * 1000000 ->
-            mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE, Id, Id_web},
-                            St#child.debug, run, 2),
-            gen_server:cast(self(), stop),
-            St#child{timer_idle=undefined};
-       true ->
+        mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE, Id, Id_web},
+            St#child.debug, run, 2),
+        gen_server:cast(self(), stop),
+        St#child{timer_idle=undefined};
+        true ->
             Iref = erlang:send_after(Idle * 1000, self(), idle_timeout),
             St#child{timer_idle=Iref}
     end.
@@ -416,8 +419,9 @@ check_auth(#child{auth_last=Last, auth_recheck=Interval} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, Last),
     if Delta > Interval * 1000000 ->
-            ecomet_conn_server_sjs:recheck_auth(St);
-       true ->
+        erpher_et:trace_me(50, {?MODULE, self()}, ecomet_conn_server_sjs, recheck_auth),
+        ecomet_conn_server_sjs:recheck_auth(St);
+        true ->
             St
     end.
 
@@ -427,7 +431,7 @@ check_auth(#child{auth_last=Last, auth_recheck=Interval} = St) ->
 %% if deep_memory_economize in the config is true
 %%
 call_gc(#child{deep_memory_economize=true,
-                 sjs_conn={sockjs_session,{_, Pid}}}) when is_pid(Pid) ->
+sjs_conn={sockjs_session,{_, Pid}}}) when is_pid(Pid) ->
     erlang:garbage_collect(Pid),
     case process_info(Pid, links) of
         {links, List} ->

@@ -33,7 +33,7 @@
 %%% Exports
 %%%----------------------------------------------------------------------------
 
--export([get_config/0, get_config/1, get_child_config/1]).
+-export([get_config/0, get_config/1, get_auth_config/0, get_child_config/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -44,6 +44,7 @@
 -endif.
 
 -include("ecomet.hrl").
+-include("ecomet_auth.hrl").
 -include("ecomet_child.hrl").
 -include("ecomet_server.hrl").
 -include("rabbit_session.hrl").
@@ -89,9 +90,6 @@ get_child_config(List) ->
                                       auth_recheck_interval,
                                       List, ?AUTH_RECHECK_INTERVAL),
         idle_timeout = proplists:get_value(idle_timeout, List),
-        http_connect_timeout = proplists:get_value(http_connect_timeout,
-                                                   List, ?IDLE_TIMEOUT),
-        http_timeout = proplists:get_value(http_timeout, List, ?IDLE_TIMEOUT),
         qmax_dur = proplists:get_value(qmax_dur, List, ?QUEUE_MAX_DUR),
         qmax_len = proplists:get_value(qmax_len, List, ?QUEUE_MAX_LEN),
         id_web = proplists:get_value(id_web, List),
@@ -104,6 +102,16 @@ get_child_config(List) ->
         exchange_base = proplists:get_value(exchange_base, List, <<>>),
         event = make_event_bin(List),
         id = proplists:get_value(id, List)
+    }.
+
+get_auth_config() ->
+    List = get_config_list(),
+    Auth_list = proplists:get_value(auth, List, []),
+    #auth_cnf{
+        http_connect_timeout = proplists:get_value(http_connect_timeout, Auth_list, ?IDLE_TIMEOUT),
+        http_timeout = proplists:get_value(http_timeout, Auth_list, ?IDLE_TIMEOUT),
+        use_cache = proplists:get_value(use_cache, Auth_list, true),
+        cache_lt = proplists:get_value(cache_lt, Auth_list, 600)
     }.
 
 %%%----------------------------------------------------------------------------
