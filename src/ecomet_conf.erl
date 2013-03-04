@@ -89,6 +89,7 @@ get_child_config(List) ->
         auth_recheck = proplists:get_value(
                                       auth_recheck_interval,
                                       List, ?AUTH_RECHECK_INTERVAL),
+        cookie_matcher = proplists:get_value(cookie_matcher, List, [<<"ID">>]),
         idle_timeout = proplists:get_value(idle_timeout, List),
         qmax_dur = proplists:get_value(qmax_dur, List, ?QUEUE_MAX_DUR),
         qmax_len = proplists:get_value(qmax_len, List, ?QUEUE_MAX_LEN),
@@ -111,7 +112,8 @@ get_auth_config() ->
         http_connect_timeout = proplists:get_value(http_connect_timeout, Auth_list, ?IDLE_TIMEOUT),
         http_timeout = proplists:get_value(http_timeout, Auth_list, ?IDLE_TIMEOUT),
         use_cache = proplists:get_value(use_cache, Auth_list, true),
-        cache_lt = proplists:get_value(cache_lt, Auth_list, 600)
+        cache_lt = proplists:get_value(cache_lt, Auth_list, 300),
+        cache_gc_interval = proplists:get_value(cache_gc_interval, Auth_list, 600)
     }.
 
 %%%----------------------------------------------------------------------------

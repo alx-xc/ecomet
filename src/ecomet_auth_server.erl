@@ -53,7 +53,8 @@
 init(_) ->
     Config = ecomet_conf:get_auth_config(),
     Cache = ets:new(ecomet_auth_cache,[set]),
-    St = #auth_st{config = Config, cache = Cache, last_reset = now()},
+    Timer_gc = erlang:send_after(Config#auth_cnf.cache_gc_interval * 1000, self(), run_gc),
+    St = #auth_st{config = Config, cache = Cache, timer_gc = Timer_gc},
     {ok, St}.
 
 %%-----------------------------------------------------------------------------
@@ -63,25 +64,17 @@ handle_call(get_config, _From, St) ->
 handle_call(get_cache, _From, St) ->
     {reply, St#auth_st.cache, St};
 
-handle_call({cache_get, {Host, Cookie}}, _From, #auth_st{cache = Cache, config = Config} = St) ->
-    Reset_delta = timer:now_diff(now(), St#auth_st.last_reset),
-    if Reset_delta > Config#auth_cnf.cache_lt * 1000000 ->
-            ets:delete_all_objects(Cache),
-            St_new = St#auth_st{last_reset = now()},
-            Res = [];
-        true ->
-            Res = ets:lookup(Cache, {Host, Cookie}),
-            St_new = St
-    end,
-    {reply, Res, St_new};
+handle_call({cache_get, Key}, _From, #auth_st{cache = Cache} = St) ->
+    Res = ets:lookup(Cache, Key),
+    {reply, Res, St};
 
 handle_call(_N, _From, St) ->
     mpln_p_debug:er({?MODULE, ?LINE, handle_call_unknown, _N}),
     {reply, {error, unknown_request}, St}.
 
 %%-----------------------------------------------------------------------------
-handle_cast({cache_set, {Host, Cookie, Data}}, #auth_st{cache = Cache} = St) ->
-    ets:insert(Cache, {{Host, Cookie}, Data}),
+handle_cast({cache_set, {Key, Data}}, #auth_st{cache = Cache} = St) ->
+    ets:insert(Cache, {Key, Data, timestamp()}),
     {noreply, St};
 
 handle_cast(_N, St) ->
@@ -94,7 +87,9 @@ terminate(_Reason, _St) ->
     ok.
 
 %%-----------------------------------------------------------------------------
-%% @doc message from amqp
+handle_info(run_gc, St) ->
+    St_new = run_gc(St),
+    {noreply, St_new};
 
 %% @doc unknown info
 handle_info(_N, St) ->
@@ -134,16 +129,31 @@ proceed_http_auth_req(Url, Cookie, Host) ->
 %% Internal functions
 %%-----------------------------------------------------------------------------
 
-http_auth_cache(Url, Cookie, Host, #auth_cnf{use_cache=true} = Config) ->
-    case gen_server:call(?MODULE, {cache_get, {Host, Cookie}}) of
-        [{{Host, Cookie}, Res}] ->
+timestamp() ->
+    {Mega, Seconds, _} = erlang:now(),
+    Mega * 1000000 + Seconds.
+
+run_gc(#auth_st{config = Config, cache = Cache, timer_gc = Timer_gc} = St) ->
+    mpln_misc_run:cancel_timer(Timer_gc),
+
+    Ts = timestamp(),
+    ets:select_delete(Cache,[{{'_','_','$1'},[{'<','$1',Ts}],[true]}]),
+
+    Timer_gc_new = erlang:send_after(Config#auth_cnf.cache_gc_interval * 1000, self(), run_gc),
+    St#auth_st{timer_gc = Timer_gc_new}.
+
+http_auth_cache(Url, Cookie, Host, #auth_cnf{use_cache=true, cache_lt=Cache_lt} = Config) ->
+    Ts_current = timestamp(),
+    Cache_key = {Host, Url, Cookie},
+    case gen_server:call(?MODULE, {cache_get, Cache_key}) of
+        [{Cache_key, Res, Ts}] when ( Ts_current - Ts ) < Cache_lt ->
             erpher_et:trace_me(50, ?MODULE, ?MODULE, 'auth cache used', {?MODULE, ?LINE}),
             ok;
         Cache_res ->
             case Res = http_auth_req(Url, Cookie, Host, Config) of
                 {ok,{{_,200,_} = Http_res, _Headers, Data}} ->
                     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'auth cache seted', {?MODULE, ?LINE, Cache_res}),
-                    gen_server:cast(?MODULE, {cache_set, {Host, Cookie, {ok,{Http_res, {}, Data}}}});
+                    gen_server:cast(?MODULE, {cache_set, {Cache_key, {ok,{Http_res, {}, Data}}}});
                 _ ->
                     ok
             end

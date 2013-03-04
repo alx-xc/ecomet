@@ -168,9 +168,9 @@ is_user_allowed(User, Users) ->
                                           binary(), binary(),
                                           undefined | binary()}.
 
-send_auth_req(St, Info) ->
+send_auth_req(#child{cookie_matcher = Cookie_matcher} = St, Info) ->
     Url0 = ecomet_data_msg:get_auth_url(Info),
-    Cookie = ecomet_data_msg:get_auth_cookie(Info),
+    Cookie = ecomet_data_msg:get_auth_cookie(Info, Cookie_matcher),
     {Url, Host} = find_auth_host(St, Url0),
     erpher_et:trace_me(50, ?MODULE, ecomet_auth_server, 'auth request', {?MODULE, ?LINE}),
     Res = ecomet_auth_server:proceed_http_auth_req(Url, Cookie, Host),

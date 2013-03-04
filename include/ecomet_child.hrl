@@ -17,6 +17,7 @@
     auth_url,
     auth_host,
     auth_cookie,
+    cookie_matcher,
     sjs_sid,
     sjs_conn,
     clients = [], % in case of many requests with the very same id (quite unusual not to say sabotage)
