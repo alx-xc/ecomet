@@ -1,4 +1,5 @@
 -include("ecomet_nums.hrl").
+-include("ecomet_auth.hrl").
 
 -ifndef(ecomet_child).
 -define(ecomet_child, true).
@@ -14,9 +15,7 @@
     idle_timeout = ?IDLE_TIMEOUT,
     auth_last = {0,0,0},
     auth_recheck = ?AUTH_RECHECK_INTERVAL,
-    auth_url,
-    auth_host,
-    auth_cookie,
+    auth = #auth_data{},
     cookie_matcher,
     sjs_sid,
     sjs_conn,

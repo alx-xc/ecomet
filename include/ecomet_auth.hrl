@@ -18,4 +18,11 @@
     timer_gc
 }).
 
+-record(auth_data, {
+    url,
+    host,
+    cookie,
+    token
+}).
+
 -endif.

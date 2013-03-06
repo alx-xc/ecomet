@@ -39,7 +39,7 @@
 -export([get_auth_type/1, get_auth_data_list/1]).
 -export([get_auth_keys/1]).
 -export([get_group/1]).
--export([get_auth_url/1, get_auth_cookie/2, get_account/1, get_user_id/1]).
+-export([get_auth_url/1, get_auth_cookie/2, get_auth_token/1, get_account/1, get_user_id/1]).
 -export([get_auth_host/1]).
 -export([get_routes/1, get_routes/2]).
 -export([get_message/1, get_users/1]).
@@ -157,6 +157,16 @@ get_auth_host(Data) ->
 
 %%-----------------------------------------------------------------------------
 %%
+%% @doc Extracts value for auth access token
+%% @since 2013-03-06 13:26
+%%
+-spec get_auth_token(any()) -> any().
+
+get_auth_token(Data) ->
+    get_value(Data, <<"accessToken">>).
+
+%%-----------------------------------------------------------------------------
+%%
 %% @doc Extracts value for auth cookie
 %% @since 2011-11-24 13:11
 %%
@@ -164,7 +174,17 @@ get_auth_host(Data) ->
 
 get_auth_cookie(Data, Cookie_matcher) ->
     Cookie = get_value(Data, <<"cookie">>),
-    Cookie_clear = lists:foldl(
+    clear_cookie(Cookie, Cookie_matcher).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc Clear cookie by Cookie_matcher pattern
+%% @since 2013-03-06 13:49
+%%
+clear_cookie(undefined, _Cookie_matcher) ->
+    undefined;
+clear_cookie(Cookie, Cookie_matcher) ->
+    lists:foldl(
         fun(El, Prev) ->
             case binary:match(El, Cookie_matcher) of
                 nomatch -> Prev;
@@ -174,8 +194,7 @@ get_auth_cookie(Data, Cookie_matcher) ->
         end,
         "",
         re:split(Cookie, ";\s*")
-    ),
-    Cookie_clear.
+    ).
 
 %%-----------------------------------------------------------------------------
 %%

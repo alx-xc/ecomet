@@ -69,7 +69,7 @@ handle_call(status, _From, St) ->
     {reply, St, St, St#child.economize};
 
 handle_call(get_client_id, _From, St) ->
-    ClientId = {St#child.id_s, St#child.auth_host},
+    ClientId = {St#child.id_s, St#child.auth},
     {reply, ClientId, St};
 
 handle_call(_N, _From, St) ->

@@ -38,7 +38,7 @@
 -export([start/0, start_link/0, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 -export([code_change/3]).
--export([proceed_http_auth_req/3]).
+-export([proceed_http_auth_req/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Includes
@@ -121,9 +121,9 @@ stop() ->
 %% @doc creates http request (to perform client's auth on auth server),
 %% sends it to a server, returns response
 %%
-proceed_http_auth_req(Url, Cookie, Host) ->
+proceed_http_auth_req(Auth_data) ->
     Config = gen_server:call(?MODULE, get_config),
-    http_auth_cache(Url, Cookie, Host, Config).
+    http_auth_cache(Auth_data, Config).
 
 %%-----------------------------------------------------------------------------
 %% Internal functions
@@ -142,15 +142,15 @@ run_gc(#auth_st{config = Config, cache = Cache, timer_gc = Timer_gc} = St) ->
     Timer_gc_new = erlang:send_after(Config#auth_cnf.cache_gc_interval * 1000, self(), run_gc),
     St#auth_st{timer_gc = Timer_gc_new}.
 
-http_auth_cache(Url, Cookie, Host, #auth_cnf{use_cache=true, cache_lt=Cache_lt} = Config) ->
+http_auth_cache(Auth_data, #auth_cnf{use_cache=true, cache_lt=Cache_lt} = Config) ->
     Ts_current = timestamp(),
-    Cache_key = {Host, Url, Cookie},
+    Cache_key = Auth_data,
     case gen_server:call(?MODULE, {cache_get, Cache_key}) of
         [{Cache_key, Res, Ts}] when ( Ts_current - Ts ) < Cache_lt ->
             erpher_et:trace_me(50, ?MODULE, ?MODULE, 'auth cache used', {?MODULE, ?LINE}),
             ok;
         Cache_res ->
-            case Res = http_auth_req(Url, Cookie, Host, Config) of
+            case Res = http_auth_req(Auth_data, Config) of
                 {ok,{{_,200,_} = Http_res, _Headers, Data}} ->
                     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'auth cache seted', {?MODULE, ?LINE, Cache_res}),
                     gen_server:cast(?MODULE, {cache_set, {Cache_key, {ok,{Http_res, {}, Data}}}});
@@ -160,14 +160,25 @@ http_auth_cache(Url, Cookie, Host, #auth_cnf{use_cache=true, cache_lt=Cache_lt} 
     end,
     Res;
 
-http_auth_cache(Url, Cookie, Host, Config) ->
-    http_auth_req(Url, Cookie, Host, Config).
+http_auth_cache(Auth_data, Config) ->
+    http_auth_req(Auth_data, Config).
 
 
-http_auth_req(Url, Cookie, Host, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
+http_auth_req(#auth_data{token = undefined, cookie = Cookie, url = Url, host = Host}, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
     Hdr = make_header(Cookie, Host),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
-    erpher_et:trace_me(50, ?MODULE, auth, 'http auth request', {?MODULE, ?LINE, Cookie, Host}),
+    erpher_et:trace_me(50, ?MODULE, auth, 'http auth cookie request', {?MODULE, ?LINE, Url, Cookie, Host}),
+    Res = httpc:request(post, Req,
+        [{timeout, Http_t}, {connect_timeout, Conn_t}],
+        [{body_format, binary}]),
+    erpher_et:trace_me(50, auth, ?MODULE, 'http auth response', {?MODULE, ?LINE, Res}),
+    Res;
+
+http_auth_req(#auth_data{token = Token, cookie = Cookie, url = Url_base, host = Host}, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
+    Hdr = make_header(Cookie, Host),
+    Url = binary:list_to_bin([Url_base, <<"?access_token=">>, Token]),
+    Req = make_req(mpln_misc_web:make_string(Url), Hdr),
+    erpher_et:trace_me(50, ?MODULE, auth, 'http auth token request', {?MODULE, ?LINE, Url, Token, Host}),
     Res = httpc:request(post, Req,
         [{timeout, Http_t}, {connect_timeout, Conn_t}],
         [{body_format, binary}]),
@@ -175,16 +186,20 @@ http_auth_req(Url, Cookie, Host, #auth_cnf{http_connect_timeout=Conn_t, http_tim
     Res.
 
 %%-----------------------------------------------------------------------------
-make_header(Cookie, undefined) ->
-    make_header2(Cookie, []);
-
 make_header(Cookie, Host) ->
-    Hstr = mpln_misc_web:make_string(Host),
-    make_header2(Cookie, [{"Host", Hstr}]).
+    [{"User-Agent","erpher"}] ++ make_header_cookie(Cookie) ++ make_header_host(Host).
 
-make_header2(Cookie, List) ->
+make_header_cookie(undefined) ->
+    [];
+make_header_cookie(Cookie) ->
     Str = mpln_misc_web:make_string(Cookie),
-    [{"cookie", Str}, {"User-Agent","erpher"} | List].
+    [{"cookie", Str}].
+
+make_header_host(undefined) ->
+    [];
+make_header_host(Host) ->
+    Str = mpln_misc_web:make_string(Host),
+    [{"Host", Str}].
 
 %%-----------------------------------------------------------------------------
 make_req(Url, Hdr) ->

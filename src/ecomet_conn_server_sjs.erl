@@ -58,19 +58,16 @@
 %%
 -spec recheck_auth(#child{}) -> #child{}.
 
-recheck_auth(#child{auth_url=undefined, auth_cookie=undefined,
-                   id_s=undefined} = St) ->
+recheck_auth(#child{auth = #auth_data{url=undefined, cookie=undefined}, id_s=undefined} = St) ->
     St;
 
-recheck_auth(#child{auth_url=Url, auth_cookie=Cookie,
-                    auth_host=Host} = St) ->
+recheck_auth(#child{auth = Auth_data} = St) ->
     erpher_et:trace_me(50, ?MODULE, ecomet_auth_server, 'auth request', {?MODULE, ?LINE}),
-    Res_auth = ecomet_auth_server:proceed_http_auth_req(Url, Cookie, Host),
+    Res_auth = ecomet_auth_server:proceed_http_auth_req(Auth_data),
     erpher_et:trace_me(50, ecomet_auth_server, ?MODULE, 'auth response', {?MODULE, ?LINE}),
 
     erpher_et:trace_me(50, ?MODULE, ?MODULE, proceed_auth_msg, {?MODULE, ?LINE}),
-    proceed_auth_msg(St#child{auth_last=now()}, Res_auth,
-                     [{<<"type">>, 'reauth'}]).
+    proceed_auth_msg(St#child{auth_last=now()}, Res_auth, [{<<"type">>, 'reauth'}]).
 
 %%-----------------------------------------------------------------------------
 %%
@@ -94,7 +91,7 @@ process_msg_from_server(#child{id=Id, sjs_conn=Conn, sjs_sid=Sid} = St, Data) ->
 
 process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
     Data = get_json_body(Bin),
-    erpher_et:trace_me(50, ?MODULE, ecomet_data_msg, get_auth_info, {?MODULE, ?LINE}),
+    erpher_et:trace_me(50, ?MODULE, ecomet_data_msg, get_auth_info, {?MODULE, ?LINE, Bin}),
     case ecomet_data_msg:get_auth_info(Data) of
         undefined when Uid == undefined ->
             mpln_p_debug:pr({?MODULE, 'process_msg', ?LINE, 'no auth data', Id}, St#child.debug, run, 4),
@@ -103,11 +100,9 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
             Type = ecomet_data_msg:get_type(Data),
             proceed_type_msg(St, use_current_exchange, Type, Data);
         Auth ->
-            {Res_auth, Url, Cookie, Host} = send_auth_req(St, Auth),
+            {Res_auth, Auth_data} = send_auth_req(St, Auth),
             erpher_et:trace_me(50, ?MODULE, ?MODULE, proceed_auth_msg, {?MODULE, ?LINE}),
-            proceed_auth_msg(St#child{auth_url=Url,
-                                      auth_host=Host,
-                                      auth_cookie=Cookie}, Res_auth, Data)
+            proceed_auth_msg(St#child{auth = Auth_data}, Res_auth, Data)
     end.
 
 %%-----------------------------------------------------------------------------
@@ -169,13 +164,18 @@ is_user_allowed(User, Users) ->
                                           undefined | binary()}.
 
 send_auth_req(#child{cookie_matcher = Cookie_matcher} = St, Info) ->
-    Url0 = ecomet_data_msg:get_auth_url(Info),
-    Cookie = ecomet_data_msg:get_auth_cookie(Info, Cookie_matcher),
-    {Url, Host} = find_auth_host(St, Url0),
-    erpher_et:trace_me(50, ?MODULE, ecomet_auth_server, 'auth request', {?MODULE, ?LINE}),
-    Res = ecomet_auth_server:proceed_http_auth_req(Url, Cookie, Host),
-    erpher_et:trace_me(50, ecomet_auth_server, ?MODULE, 'auth response', {?MODULE, ?LINE}),
-    {Res, Url, Cookie, Host}.
+    Url_base = ecomet_data_msg:get_auth_url(Info),
+    {Url, Host} = find_auth_host(St, Url_base),
+    Auth = #auth_data{
+        url = Url,
+        host = Host,
+        token = ecomet_data_msg:get_auth_token(Info),
+        cookie = ecomet_data_msg:get_auth_cookie(Info, Cookie_matcher)
+    },
+    erpher_et:trace_me(50, ?MODULE, ecomet_auth_server, 'auth request', {?MODULE, ?LINE, Auth}),
+    Res = ecomet_auth_server:proceed_http_auth_req(Auth),
+    erpher_et:trace_me(50, ecomet_auth_server, ?MODULE, 'auth response', {?MODULE, ?LINE, Res}),
+    {Res, Auth}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -224,8 +224,8 @@ proceed_auth_msg(St, {ok, Info}, Data) ->
     Type = ecomet_data_msg:get_type(Data),
     proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data);
 
-proceed_auth_msg(#child{auth_host=Host} = St, {error, Reason}, _Data) ->
-    mpln_p_debug:er({?MODULE, ?LINE, proceed_auth_msg_error, Host, Reason}),
+proceed_auth_msg(#child{auth = Auth_data} = St, {error, Reason}, _Data) ->
+    mpln_p_debug:er({?MODULE, ?LINE, proceed_auth_msg_error, Auth_data, Reason}),
     ecomet_conn_server:stop(self()),
     St#child{id_s = undefined}.
 
