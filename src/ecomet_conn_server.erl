@@ -430,8 +430,7 @@ check_auth(#child{auth_last=Last, auth_recheck=Interval} = St) ->
 %% @doc call garbage collect for sockjs and cowboy processes
 %% if deep_memory_economize in the config is true
 %%
-call_gc(#child{deep_memory_economize=true,
-sjs_conn={sockjs_session,{_, Pid}}}) when is_pid(Pid) ->
+call_gc(#child{deep_memory_economize=true, sjs_conn={sockjs_session,{_, Pid}}}) when is_pid(Pid) ->
     erlang:garbage_collect(Pid),
     case process_info(Pid, links) of
         {links, List} ->

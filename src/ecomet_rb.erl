@@ -50,6 +50,7 @@
 -export([prepare_queue_bind_one/3]).
 -export([prepare_queue_rebind/5]).
 -export([prepare_queue_add_bind/3]).
+-export([prepare_queue_unbind/1, prepare_queue_unbind/2, prepare_queue_unbind_one/2]).
 
 %%%----------------------------------------------------------------------------
 %%% API
@@ -275,6 +276,44 @@ prepare_queue_rebind(Conn, Exchange, Old_keys, New_keys, No_local) ->
     teardown_queues(Conn),
     New.
 
+%%-----------------------------------------------------------------------------
+%%
+%% @doc remove bindings and queues for connection
+%% @since 2011-12-09 15:02
+%%
+-spec prepare_queue_unbind(#conn{}) -> #conn{}.
+
+prepare_queue_unbind(Conn) ->
+    teardown_tags(Conn),
+    teardown_queues(Conn),
+    Conn#conn{consumer_tags = []}.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc remove only bindings for connection
+%% @since 2013-04-24 17:01
+%%
+-spec prepare_queue_unbind(#conn{}, [binary()]) -> #conn{}.
+
+prepare_queue_unbind(Conn, [Tag_remove|Tags_remove]) ->
+    Conn_new = prepare_queue_unbind_one(Conn, Tag_remove),
+    prepare_queue_unbind(Conn_new, Tags_remove);
+
+prepare_queue_unbind(Conn, []) ->
+    Conn.
+
+
+-spec prepare_queue_unbind_one(#conn{}, binary()) -> #conn{}.
+
+prepare_queue_unbind_one(#conn{consumer_tags=[Head|_]} = Conn, Tag_remove) ->
+    {Queue, _Tag} = Head,
+    try unbind_queue(Conn, Queue, Tag_remove) of
+        _ -> ok
+    catch
+        _ -> mpln_p_debug:er({?MODULE, ?LINE, unbind_route_error, Tag_remove})
+    end,
+    Conn.
+
 %%%----------------------------------------------------------------------------
 %%% Internal functions
 %%%----------------------------------------------------------------------------
@@ -340,8 +379,7 @@ create_queue(#conn{channel=Channel, ticket=Ticket}) ->
 %%
 %% @doc bind queue to the binding key
 %%
-bind_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Queue,
-              Bind_key) ->
+bind_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Queue, Bind_key) ->
     %mpln_p_debug:pr({?MODULE, ?LINE, bind_queue, Queue, Bind_key}),
     QueueBind = #'queue.bind'{ticket = Ticket,
         exchange = X,
@@ -349,6 +387,16 @@ bind_queue(#conn{channel=Channel, exchange=X, ticket=Ticket}, Queue,
         routing_key = Bind_key,
         nowait = false, arguments = []},
     #'queue.bind_ok'{} = amqp_channel:call(Channel, QueueBind).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc unbind queue binding key
+%%
+unbind_queue(#conn{channel=Channel, exchange=Exchange}, Queue, RoutingKey) ->
+    Binding = #'queue.unbind'{queue = Queue,
+        exchange    = Exchange,
+        routing_key = RoutingKey},
+    #'queue.unbind_ok'{} = amqp_channel:call(Channel, Binding).
 
 %%-----------------------------------------------------------------------------
 %%

@@ -24,6 +24,7 @@
     qmax_dur = ?QUEUE_MAX_DUR, % microseconds
     qmax_len = ?QUEUE_MAX_LEN,
     debug,
+    sjs_debug = false, % send debug info to socket
     conn, % #conn{}
     exchange_base,
     routes = [], % routing keys

@@ -134,18 +134,21 @@ module_path() ->
 %% @doc handler of sockjs messages: init, recv, closed.
 %%
 bcast(Conn, {recv, Data}, _St) ->
+    %erlang:display({now(), recv}),
     Sid = Conn,
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast recv', Data),
     ecomet_server:sjs_msg(Sid, Conn, Data),
     ok;
 
 bcast(Conn, init, _St) ->
+    %erlang:display({now(), init}),
     Sid = Conn,
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast init'),
     ecomet_server:sjs_add(Sid, Conn),
     ok;
 
 bcast(Conn, closed, _St) ->
+    %erlang:display({now(), closed}),
     Sid = Conn,
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast closed'),
     ecomet_server:sjs_del(Sid, Conn),
@@ -154,6 +157,12 @@ bcast(Conn, closed, _St) ->
 bcast(_Conn, _Data, _St) ->
     mpln_p_debug:er({?MODULE, ?LINE, 'bcast unknown', _Conn, _Data}),
     ok.
+
+
+send(Conn, Data) ->
+    Json = mochijson2:encode(Data),
+    Msg = iolist_to_binary(Json),
+    sockjs:send(Msg, Conn).
 
 %%-----------------------------------------------------------------------------
 %%

@@ -76,7 +76,7 @@ recheck_auth(#child{auth = Auth_data} = St) ->
 %%
 -spec process_msg_from_server(#child{}, any()) -> #child{}.
 
-process_msg_from_server(#child{id=Id, sjs_conn=Conn, sjs_sid=Sid} = St, Data) ->
+process_msg_from_server(#child{sjs_conn=Conn} = St, Data) ->
     erpher_et:trace_me(50, ?MODULE, sockjs, send, {?MODULE, ?LINE}),
     sockjs:send(Data, Conn),
     St.
@@ -140,6 +140,26 @@ send(#child{id_s=User, sjs_conn=Conn} = St, Key, Body) ->
         false ->
             St
     end.
+
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc send message to socket
+%%
+send_simple(#child{sjs_conn=Conn} = St, Data) ->
+    Json = mochijson2:encode(Data), % for mochijson2
+    Msg = iolist_to_binary(Json),
+    sockjs:send(Msg, Conn).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc send debug message to socket if enabled
+%%
+send_debug(#child{sjs_debug=false}, _Data) ->
+    ok;
+
+send_debug(#child{sjs_conn=Conn} = St, Data) ->
+    send_simple(#child{sjs_conn=Conn} = St, Data).
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
@@ -237,20 +257,26 @@ proceed_auth_msg(#child{auth = Auth_data} = St, {error, Reason}, _Data) ->
                        reauth | binary(),
                        any()) -> #child{}.
 
+%% @doc bad auth
 proceed_type_msg(#child{id=Id, id_s=undefined} = St, _, _, _) ->
     mpln_p_debug:er({?MODULE, ?LINE, proceed_type_msg, undef_id_s, Id}),
+    send_debug(St, [{<<"debug">>, <<"bad_auth">>}]),
     ecomet_conn_server:stop(self()),
     St;
 
+%% @doc reauth
 proceed_type_msg(#child{conn=Conn, no_local=No_local, routes=Routes} = St, Exchange, 'reauth', _Data) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg reauth', {?MODULE, ?LINE}),
     erpher_et:trace_me(50, ?MODULE, ecomet_rb, prepare_queue_rebind, {?MODULE, ?LINE}),
     New = ecomet_rb:prepare_queue_rebind(Conn, Exchange, Routes, [], No_local),
+    send_debug(St, [{<<"debug">>, <<"reauth">>}]),
     St#child{conn = New};
 
+%% @doc subscribe some topics
 proceed_type_msg(#child{conn=Conn, no_local=No_local, routes=Old_routes} = St, Exchange, <<"subscribe">>, Data) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg subscribe', {?MODULE, ?LINE}),
-    Routes = ecomet_data_msg:get_routes(Data, []),
+    Routes_dirty = ecomet_data_msg:get_routes(Data, []),
+    Routes = lists:filter( fun(E) -> IsMember = lists:member(E, Old_routes), if IsMember -> false; true -> true end end, Routes_dirty),
     New = case Exchange of
               use_current_exchange ->
                   erpher_et:trace_me(50, ?MODULE, ecomet_rb, prepare_queue_add_bind, {?MODULE, ?LINE}),
@@ -259,10 +285,56 @@ proceed_type_msg(#child{conn=Conn, no_local=No_local, routes=Old_routes} = St, E
                   erpher_et:trace_me(50, ?MODULE, ecomet_rb, prepare_queue_rebind, {?MODULE, ?LINE}),
                   ecomet_rb:prepare_queue_rebind(Conn, Exchange, Old_routes, Routes, No_local)
           end,
-    St#child{conn = New, routes = Routes ++ Old_routes};
+    St_new = St#child{conn = New, routes = Routes ++ Old_routes},
+    send_debug(St_new, [{<<"debug">>, St_new#child.routes}]),
+    St_new;
+
+%% @doc unsubscribe some topics
+proceed_type_msg(St, _Exchange, <<"unsubscribe">>, Data) ->
+    Routes = ecomet_data_msg:get_routes(Data, []),
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg unsubscribe', {?MODULE, ?LINE, Routes}),
+    St_new = unsubscribe(St, Routes),
+    send_debug(St_new, [{<<"debug">>, St_new#child.routes}]),
+    St_new;
+
+%% @doc debug
+proceed_type_msg(St, _Exchange, <<"debug">>, _Data) ->
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg debug on', {?MODULE, ?LINE, _Data}),
+    St_new = St#child{sjs_debug = true},
+    send_debug(St_new, [{<<"debug">>, <<"on">>}]),
+    St_new;
+
+%% @doc debug off
+proceed_type_msg(St, _Exchange, <<"debug_off">>, _Data) ->
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg debug off', {?MODULE, ?LINE, _Data}),
+    St_new = St#child{sjs_debug = false},
+    send_debug(St_new, [{<<"debug">>, <<"off">>}]),
+    St_new;
 
 proceed_type_msg(St, _Exchange, Other, _Data) ->
     mpln_p_debug:er({?MODULE, ?LINE, proceed_type_msg, other, Other}),
+    St.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc unsubscribe
+%%
+-spec unsubscribe(#child{}, [binary()]) -> #child{}.
+
+unsubscribe(#child{conn=Conn, routes=Old_routes} = St, [Route|Routes]) ->
+    St_new = case lists:member(Route, Old_routes) of
+        true ->
+            erpher_et:trace_me(50, ?MODULE, ecomet_rb, queue_unbind, {?MODULE, ?LINE, Route}),
+            Conn_new = ecomet_rb:prepare_queue_unbind_one(Conn, Route),
+            St#child{conn = Conn_new, routes = lists:delete(Route, Old_routes)};
+
+        false ->
+            mpln_p_debug:er({?MODULE, ?LINE, 'unsubscribe unknown route', Route}),
+            St
+    end,
+    unsubscribe(St_new, Routes);
+
+unsubscribe(St, []) ->
     St.
 
 %%-----------------------------------------------------------------------------

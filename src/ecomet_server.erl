@@ -93,7 +93,9 @@ handle_cast({del_child, Pid, Type, Ref}, St) ->
 
 handle_cast({sjs_add, Sid, Conn}, St) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast add start', {?MODULE, ?LINE}),
+    %T1 = now(),
     {_Res, St_new} = add_sjs_child(St, Sid, Conn),
+    %erlang:display({now(), sjs_add, add_sjs_child, timer:now_diff(now(), T1)/1000000}),
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast add finish', {?MODULE, ?LINE}),
     {noreply, St_new};
 
@@ -406,7 +408,10 @@ process_sjs_msg(#csr{smoke_test=broadcast} = St, _Sid, _Conn, Data) ->
     process_sjs_broadcast_msg(St, Data);
 
 process_sjs_msg(St, Sid, Conn, Data) ->
-    case check_sjs_child(St, Sid, Conn) of
+    %T1 = now(),
+    Check = check_sjs_child(St, Sid, Conn),
+    %erlang:display({now(), process_sjs_msg, checkChild, timer:now_diff(now(), T1)/1000000}),
+    case Check of
         {{ok, Pid}, St_c} ->
             erpher_et:trace_me(50, ?MODULE, ecomet_conn_server, data_from_sjs, {?MODULE, ?LINE}),
             ecomet_conn_server:data_from_sjs(Pid, Data),
@@ -416,6 +421,7 @@ process_sjs_msg(St, Sid, Conn, Data) ->
             ecomet_conn_server:data_from_sjs(Pid, Data),
             St_c;
         {{error, _Reason}, _St_c} ->
+            mpln_p_debug:er({?MODULE, ?LINE, process_sjs_msg, {error, _Reason}}),
             St
     end.
 
@@ -444,7 +450,6 @@ check_sjs_child(#csr{sjs_children = Ch} = St, Sid, Conn) ->
 %%
 is_sjs_child_alive(St, List, Id) ->
     L2 = [X || X <- List, X#chi.sjs_sid == Id],
-    mpln_p_debug:pr({?MODULE, "is_sjs_child_alive", ?LINE, L2, Id}, St#csr.debug, run, 4),
     case L2 of
         [I | _] ->
             {is_process_alive(I#chi.pid), I};
