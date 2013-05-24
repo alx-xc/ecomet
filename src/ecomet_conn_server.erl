@@ -278,9 +278,9 @@ send_rabbit_msg(#child{id=Id, id_r=Base, no_local=No_local} = St, {Dinfo, Conten
         true when No_local == true ->
             mpln_p_debug:pr({?MODULE, do_rabbit_msg, our_id, ?LINE, Id}, St#child.debug, rb_msg, 5);
         _ ->
-            Stdup = ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
+            ecomet_test:dup_message_to_rabbit(St, Payload), % FIXME: for debug only
             erpher_et:trace_me(50, ?MODULE, ?MODULE, proceed_send, {?MODULE, ?LINE}),
-            proceed_send(Stdup, Dinfo, Payload)
+            proceed_send(St, Dinfo, Payload)
     end.
 
 %%-----------------------------------------------------------------------------

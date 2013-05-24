@@ -95,7 +95,7 @@ make_hour_key({D, {H, _M, _S}}) ->
 %%
 -spec is_our_id(binary(), any()) -> boolean().
 
-is_our_id(Base, Id) ->
+ is_our_id(Base, Id) ->
     Base == Id.
 
 %%-----------------------------------------------------------------------------

@@ -133,30 +133,31 @@ module_path() ->
 %%
 %% @doc handler of sockjs messages: init, recv, closed.
 %%
-bcast(Conn, {recv, Data}, _St) ->
-    %erlang:display({now(), recv}),
+bcast(Conn, {recv, <<"\"echo\"">> = Data}, _St) ->
+    sockjs:send(Data, Conn);
+
+bcast(Conn, {recv, Data}, St) ->
+    %erlang:display({now(), recv, Data}),
     Sid = Conn,
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast recv', Data),
     ecomet_server:sjs_msg(Sid, Conn, Data),
-    ok;
+    {ok, St};
 
-bcast(Conn, init, _St) ->
-    %erlang:display({now(), init}),
+bcast(Conn, init, St) ->
     Sid = Conn,
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast init'),
     ecomet_server:sjs_add(Sid, Conn),
-    ok;
+    {ok, St};
 
-bcast(Conn, closed, _St) ->
-    %erlang:display({now(), closed}),
+bcast(Conn, closed, St) ->
     Sid = Conn,
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast closed'),
     ecomet_server:sjs_del(Sid, Conn),
-    ok;
+    {ok, St};
 
-bcast(_Conn, _Data, _St) ->
+bcast(_Conn, _Data, St) ->
     mpln_p_debug:er({?MODULE, ?LINE, 'bcast unknown', _Conn, _Data}),
-    ok.
+    {ok, St}.
 
 
 send(Conn, Data) ->

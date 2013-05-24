@@ -113,6 +113,7 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
 -spec send(#child{}, binary(), binary() | string()) -> #child{}.
 
 send(#child{id=Id, id_s=undefined} = St, _Key, _Body) ->
+    send_debug(St, [{<<"debug">>, <<"undefined uid">>}]),
     mpln_p_debug:er({?MODULE, ?LINE, Id, 'send to undefined uid'}),
     St;
 
@@ -131,13 +132,14 @@ send(#child{id_s=User, sjs_conn=Conn} = St, Key, Body) ->
             %Json = sockjs_util:encode({Data}), % for jiffy
             Json = mochijson2:encode(Data), % for mochijson2
             %Json = mochijson2:encode(Data),
-            Json_b = iolist_to_binary(Json),
+            Msg = iolist_to_binary(Json),
             %Json_s = binary_to_list(Json_b),
-            Msg = Json_b, % for sockjs
+            %Msg = Json_b, % for sockjs
             erpher_et:trace_me(50, ?MODULE, sockjs, send, {?MODULE, ?LINE, Msg}),
             sockjs:send(Msg, Conn),
             St;
         false ->
+            send_debug(St, [{<<"debug">>, <<"user is not allowed by msg">>}]),
             St
     end.
 

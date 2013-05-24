@@ -15,8 +15,7 @@
 -spec dup_message_to_rabbit(#child{}, binary()) -> #child{}.
 
 dup_message_to_rabbit(#child{id=Id} = St, Data) ->
-    mpln_p_debug:pr({?MODULE, dup_message_to_rabbit, ?LINE, Id, Data},
-                    St#child.debug, rb_msg, 6),
+    mpln_p_debug:ir({?MODULE, dup_message_to_rabbit, ?LINE, Id, Data}),
     Base = if
                byte_size(Data) > 64 ->
                    <<"init_">>;
