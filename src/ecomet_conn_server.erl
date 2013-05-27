@@ -91,10 +91,14 @@ handle_cast({data_from_server, Data}, St) ->
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sjs, Data}, St) ->
+    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server cast debug"),
     erpher_et:trace_me(50, ?MODULE, ecomet_conn_server_sjs, process_msg, {?MODULE, ?LINE}),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
+    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server process_msg end debug"),
     New = update_idle(St_r),
+    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server update_idle end debug"),
     call_gc(New),
+    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server call_gc end debug"),
     {noreply, New, New#child.economize};
 
 handle_cast(_N, St) ->

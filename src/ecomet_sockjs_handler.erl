@@ -137,20 +137,20 @@ bcast(Conn, {recv, <<"\"echo\"">> = Data}, _St) ->
     sockjs:send(Data, Conn);
 
 bcast(Conn, {recv, Data}, St) ->
-    %erlang:display({now(), recv, Data}),
-    Sid = Conn,
+    ecomet_sjs:debug(Conn, Data, "sjs debug"),
+    Sid = get_sid(Conn),
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast recv', Data),
     ecomet_server:sjs_msg(Sid, Conn, Data),
     {ok, St};
 
 bcast(Conn, init, St) ->
-    Sid = Conn,
+    Sid = get_sid(Conn),
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast init'),
     ecomet_server:sjs_add(Sid, Conn),
     {ok, St};
 
 bcast(Conn, closed, St) ->
-    Sid = Conn,
+    Sid = get_sid(Conn),
     erpher_et:trace_me(50, ?MODULE, ecomet_server, 'bcast closed'),
     ecomet_server:sjs_del(Sid, Conn),
     {ok, St};
@@ -159,11 +159,9 @@ bcast(_Conn, _Data, St) ->
     mpln_p_debug:er({?MODULE, ?LINE, 'bcast unknown', _Conn, _Data}),
     {ok, St}.
 
-
-send(Conn, Data) ->
-    Json = mochijson2:encode(Data),
-    Msg = iolist_to_binary(Json),
-    sockjs:send(Msg, Conn).
+get_sid(Conn) ->
+    {sockjs_session, {SPid, _Info}} = Conn,
+    SPid.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -193,8 +191,8 @@ prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
                   Base_p,
                   fun bcast/3,
                   state,
-                  [{cookie_needed, true},
-                   {response_limit, 4096},
+                  [{cookie_needed, false},
+                   {response_limit, 10000},
                    {logger, Flogger}
                   ]),
     VRoutes = [{[Base, '...'], sockjs_cowboy_handler, StateEcho},

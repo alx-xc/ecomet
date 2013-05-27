@@ -107,6 +107,7 @@ handle_cast({sjs_del, Sid, Conn}, St) ->
 
 handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast msg start', {?MODULE, ?LINE}),
+    ecomet_sjs:debug(Conn, Data, "ecomet cast debug"),
     New = process_sjs_msg(St, Sid, Conn, Data),
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast msg finish', {?MODULE, ?LINE}),
     {noreply, New};
@@ -309,11 +310,11 @@ prepare_rabbit(C) ->
 %% @todo decide which policy is better - connection restart or terminate itself
 %%
 check_error(St, {{noproc, _Reason}, _Other}) ->
-    mpln_p_debug:pr({?MODULE, check_error, ?LINE}, St#csr.debug, run, 3),
+    mpln_p_debug:er({?MODULE, ?LINE, 'check_error noproc, reconnect to rabbit'}),
     New = reconnect(St),
     {{error, noproc}, New};
 check_error(St, Other) ->
-    mpln_p_debug:pr({?MODULE, check_error_other, ?LINE}, St#csr.debug, run, 3),
+    mpln_p_debug:ir({?MODULE, ?LINE, check_error_other}),
     {{error, Other}, St}.
 
 %%-----------------------------------------------------------------------------
@@ -338,10 +339,8 @@ add_child_list(St, Type, Pid, Id, Pars) ->
     add_child_list2(St, Type, Data, Pars).
 
 add_child_list2(#csr{sjs_children=C} = St, 'sjs', Data, Pars) ->
-    Conn = proplists:get_value(sjs_conn, Pars),
     Sid = proplists:get_value(sjs_sid, Pars),
-    New = Data#chi{sjs_conn=Conn, sjs_sid=Sid},
-    St#csr{sjs_children=[New | C]}.
+    St#csr{sjs_children=[{Sid, Data} | C]}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -352,14 +351,14 @@ del_sjs_pid2(St, Ref, Conn) ->
     % gives an exception when trying to close already closed session
     Res = (catch sockjs:close(3000, "conn. closed.", Conn)),
     mpln_p_debug:pr({?MODULE, 'del_sjs_pid2', ?LINE, Ref, Conn, Res}, St#csr.debug, run, 3),
-    F = fun(#chi{sjs_sid=X}) ->
+    F = fun({X, _}) ->
                 X == Ref
         end,
     proceed_del_sjs_pid(St, F).
 
 del_sjs_pid(St, _Pid, Ref) ->
     mpln_p_debug:pr({?MODULE, 'del_sjs_pid', ?LINE, Ref, _Pid}, St#csr.debug, run, 2),
-    F = fun(#chi{id=Id}) ->
+    F = fun({_, #chi{id=Id}}) ->
                 Id == Ref
         end,
     proceed_del_sjs_pid(St, F).
@@ -377,7 +376,7 @@ proceed_del_sjs_pid(#csr{sjs_children=L} = St, F) ->
 %% @doc terminates sockjs or socket-io related process
 %%
 terminate_sjs_children(St, List) ->
-    F = fun(#chi{pid=Pid}) ->
+    F = fun({_, #chi{pid=Pid}}) ->
                 Info = process_info(Pid),
                 mpln_p_debug:pr({?MODULE, terminate_children, ?LINE, Info}, St#csr.debug, run, 5),
                 ecomet_conn_server:stop(Pid)
@@ -409,7 +408,9 @@ process_sjs_msg(#csr{smoke_test=broadcast} = St, _Sid, _Conn, Data) ->
 
 process_sjs_msg(St, Sid, Conn, Data) ->
     %T1 = now(),
+    ecomet_sjs:debug(Conn, Data, "pre check_sjs_child debug"),
     Check = check_sjs_child(St, Sid, Conn),
+    ecomet_sjs:debug(Conn, Data, "post check_sjs_child debug"),
     %erlang:display({now(), process_sjs_msg, checkChild, timer:now_diff(now(), T1)/1000000}),
     case Check of
         {{ok, Pid}, St_c} ->
@@ -448,13 +449,13 @@ check_sjs_child(#csr{sjs_children = Ch} = St, Sid, Conn) ->
 %% @doc finds sockjs child with given client id and checks whether it's
 %% alive
 %%
-is_sjs_child_alive(St, List, Id) ->
-    L2 = [X || X <- List, X#chi.sjs_sid == Id],
-    case L2 of
-        [I | _] ->
-            {is_process_alive(I#chi.pid), I};
+is_sjs_child_alive(St, List, Sjs_sid) ->
+    Child = proplists:get_value(Sjs_sid, List),
+    case Child of
+        undefined ->
+            {false, undefined};
         _ ->
-            {false, undefined}
+            {true, Child}
     end.
 
 %%-----------------------------------------------------------------------------
@@ -477,11 +478,9 @@ prepare_stat_result(#csr{sjs_children=Ch}, procs) ->
 %%
 prepare_stat_result(#csr{sjs_children=Ch}, procs_mem) ->
     Len = length(Ch),
-    Cid = [catch gen_server:call(X#chi.pid, get_client_id) || X <- Ch],
-    Clients_count = sets:size(sets:from_list(Cid)),
     Pids = [X#chi.pid || X <- Ch],
     Sum = estat_misc:fetch_sum_pids_memory(Pids),
-    [{prc, Len}, {mem, Sum}, {clnt, Clients_count}].
+    [{prc, Len}, {mem, Sum}].
 
 %%-----------------------------------------------------------------------------
 %%
