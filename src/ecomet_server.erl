@@ -423,6 +423,9 @@ process_sjs_msg(St, Sid, Conn, Data) ->
             St_c;
         {{error, _Reason}, _St_c} ->
             mpln_p_debug:er({?MODULE, ?LINE, process_sjs_msg, {error, _Reason}}),
+            St;
+        _Error ->
+            mpln_p_debug:er({?MODULE, ?LINE, process_sjs_msg, {unknown_error, _Error}}),
             St
     end.
 
