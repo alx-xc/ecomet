@@ -34,7 +34,7 @@
 %%%----------------------------------------------------------------------------
 
 -export([process_msg/2]).
--export([send/3]).
+-export([send/3, send_debug/2]).
 -export([recheck_auth/1]).
 -export([process_msg_from_server/2]).
 
@@ -195,7 +195,9 @@ send_auth_req(#child{cookie_matcher = Cookie_matcher} = St, Info) ->
         cookie = ecomet_data_msg:get_auth_cookie(Info, Cookie_matcher)
     },
     erpher_et:trace_me(50, ?MODULE, ecomet_auth_server, 'auth request', {?MODULE, ?LINE, Auth}),
+    send_debug(St, "auth request start"),
     Res = ecomet_auth_server:proceed_http_auth_req(Auth),
+    send_debug(St, "auth request finish"),
     erpher_et:trace_me(50, ecomet_auth_server, ?MODULE, 'auth response', {?MODULE, ?LINE, Res}),
     {Res, Auth}.
 
@@ -310,7 +312,7 @@ proceed_type_msg(St, _Exchange, <<"debug">>, _Data) ->
 proceed_type_msg(St, _Exchange, <<"debug_off">>, _Data) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg debug off', {?MODULE, ?LINE, _Data}),
     St_new = St#child{sjs_debug = false},
-    send_debug(St_new, [{<<"debug">>, <<"off">>}]),
+    send_debug(St, [{<<"debug">>, <<"off">>}]),
     St_new;
 
 proceed_type_msg(St, _Exchange, Other, _Data) ->
@@ -331,7 +333,8 @@ unsubscribe(#child{conn=Conn, routes=Old_routes} = St, [Route|Routes]) ->
             St#child{conn = Conn_new, routes = lists:delete(Route, Old_routes)};
 
         false ->
-            mpln_p_debug:er({?MODULE, ?LINE, 'unsubscribe unknown route', Route}),
+            mpln_p_debug:er({?MODULE, ?LINE, <<"unsubscribe unknown route">>, Route}),
+            send_debug(St, [{<<"debug">>, <<"unsubscribe unknown route">>}]),
             St
     end,
     unsubscribe(St_new, Routes);

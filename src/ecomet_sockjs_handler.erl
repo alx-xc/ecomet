@@ -159,6 +159,12 @@ bcast(_Conn, _Data, St) ->
     mpln_p_debug:er({?MODULE, ?LINE, 'bcast unknown', _Conn, _Data}),
     {ok, St}.
 
+%%-----------------------------------------------------------------------------
+%%
+%% @doc returns short identifier from sockjs session
+%%
+-spec get_sid(tuple()) -> {pid()}.
+
 get_sid(Conn) ->
     {sockjs_session, {SPid, _Info}} = Conn,
     SPid.

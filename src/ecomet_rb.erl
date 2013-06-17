@@ -369,7 +369,7 @@ get_prop_id(Props) ->
 create_queue(#conn{channel=Channel, ticket=Ticket}) ->
 
     QueueDeclare = #'queue.declare'{ticket = Ticket,
-        passive = false, durable = true,
+        passive = false, durable = false,
         exclusive = true, auto_delete = false,
         nowait = false, arguments = []},
     #'queue.declare_ok'{queue = Q} = amqp_channel:call(Channel, QueueDeclare),

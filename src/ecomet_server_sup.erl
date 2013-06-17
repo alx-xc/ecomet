@@ -18,5 +18,5 @@ init(_Args) ->
         ecomet_srv, {ecomet_server, start_link, []},
         permanent, 1000, worker, [ecomet_server]
     },
-    {ok, {{one_for_one, 3, 5},
+    {ok, {{one_for_all, 3, 5},
           [Csup, Auth, Ch]}}.

@@ -58,7 +58,6 @@ init([List]) ->
     process_flag(trap_exit, true), % to flush jit log messages
     C = ecomet_conf:get_child_config(List),
     New = prepare_all(C),
-    mpln_p_debug:pr({?MODULE, init_done, ?LINE, New#child.id, New#child.id_web}, C#child.debug, run, 2),
     {ok, New, New#child.economize}.
 
 %%-----------------------------------------------------------------------------
@@ -91,14 +90,14 @@ handle_cast({data_from_server, Data}, St) ->
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sjs, Data}, St) ->
-    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server cast debug"),
+    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server cast debug">>),
     erpher_et:trace_me(50, ?MODULE, ecomet_conn_server_sjs, process_msg, {?MODULE, ?LINE}),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
-    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server process_msg end debug"),
+    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server process_msg end debug">>),
     New = update_idle(St_r),
-    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server update_idle end debug"),
+    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server update_idle end debug">>),
     call_gc(New),
-    ecomet_sjs:debug(St#child.sjs_conn, Data, "conn_server call_gc end debug"),
+    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server call_gc end debug">>),
     {noreply, New, New#child.economize};
 
 handle_cast(_N, St) ->
@@ -107,44 +106,48 @@ handle_cast(_N, St) ->
 
 %%-----------------------------------------------------------------------------
 terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
+    catch ecomet_conn_server_sjs:send_debug(St, {<<"terminate">>, Reason}),
     case Reason of
         normal -> mpln_p_debug:pr({?MODULE, ?LINE, terminate, Id, Reason}, St#child.debug, run, 2);
-        _ -> mpln_p_debug:pr({?MODULE, ?LINE, terminate, Id, Reason}, St#child.debug, run, 1)
+        _ -> mpln_p_debug:er({?MODULE, ?LINE, terminate, Id, Reason})
     end,
-    ecomet_rb:teardown_tags(Conn),
-    ecomet_rb:teardown_queues(Conn),
-    ecomet_server:del_child(self(), Type, Id),
-    if Type == 'sjs' ->
-            erpher_et:trace_me(50, ?MODULE, sockjs, close, {?MODULE, ?LINE}),
-            catch sockjs:close(3000, "conn. closed", Sconn);
-       true ->
-            ok
-    end,
+    erpher_et:trace_me(50, ?MODULE, sockjs, close, {?MODULE, ?LINE}),
+    catch sockjs:close(3000, "server error", Sconn),
+    catch ecomet_rb:teardown_tags(Conn),
+    catch ecomet_rb:teardown_queues(Conn),
+    catch ecomet_server:del_child(self(), Type, Id),
     ok.
 
 %%-----------------------------------------------------------------------------
 %% @doc message from amqp
 handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req, St) ->
+    ecomet_conn_server_sjs:send_debug(St, <<"basic.deliver">>),
     erpher_et:trace_me(50, ?MODULE, ecomet_rb, send_ack, {?MODULE, ?LINE, Tag}),
     ecomet_rb:send_ack(St#child.conn, Tag),
+    ecomet_conn_server_sjs:send_debug(St, <<"basic.deliver ack_sended">>),
     New = send_rabbit_msg(St, Req),
+    ecomet_conn_server_sjs:send_debug(St, <<"basic.deliver finish">>),
     {noreply, New, New#child.economize};
 
 %% @doc amqp setup consumer confirmation. In fact, unnecessary for case
 %% of list of consumers
 handle_info(#'basic.consume_ok'{consumer_tag = _Tag}, St) ->
+    ecomet_conn_server_sjs:send_debug(St, <<"basic.consume_ok">>),
     New = St#child{conn=(St#child.conn)#conn{consumer=ok}},
     {noreply, New, New#child.economize};
 
 handle_info(timeout, St) ->
+    ecomet_conn_server_sjs:send_debug(St, <<"handle_info timeout">>),
     New = periodic_check(St),
     {noreply, New, New#child.economize};
 
 handle_info(idle_timeout, St) ->
+    ecomet_conn_server_sjs:send_debug(St, <<"handle_info check_idle">>),
     New = check_idle(St),
     {noreply, New, New#child.economize};
 
 handle_info(periodic_check, St) ->
+    ecomet_conn_server_sjs:send_debug(St, <<"handle_info periodic_check">>),
     New = periodic_check(St),
     {noreply, New, New#child.economize};
 
@@ -239,7 +242,6 @@ prepare_rabbit(#child{event=undefined} = C) ->
     C;
 prepare_rabbit(#child{conn=Conn, event=Event, no_local=No_local} = C) ->
     New_conn = ecomet_rb:prepare_queue_bind_one(Conn, Event, No_local),
-    mpln_p_debug:pr({?MODULE, prepare_rabbit_queue, ?LINE, New_conn}, C#child.debug, run, 3),
     C#child{conn=New_conn}.
 
 %%-----------------------------------------------------------------------------
@@ -406,8 +408,7 @@ timer_idle=Ref} = St) ->
     Now = now(),
     Delta = timer:now_diff(Now, T),
     if Delta > Idle * 1000000 ->
-        mpln_p_debug:pr({?MODULE, "stop on idle", ?LINE, Id, Id_web},
-            St#child.debug, run, 2),
+        mpln_p_debug:pr({?MODULE, <<"stop on idle">>, ?LINE, Id, Id_web}, St#child.debug, run, 2),
         gen_server:cast(self(), stop),
         St#child{timer_idle=undefined};
         true ->
@@ -424,10 +425,11 @@ check_auth(#child{auth_last=Last, auth_recheck=Interval} = St) ->
     Delta = timer:now_diff(Now, Last),
     if Delta > Interval * 1000000 ->
         erpher_et:trace_me(50, {?MODULE, self()}, ecomet_conn_server_sjs, recheck_auth),
-        ecomet_conn_server_sjs:recheck_auth(St);
+        St_new = ecomet_conn_server_sjs:recheck_auth(St);
         true ->
-            St
-    end.
+            St_new = St
+    end,
+    St_new.
 
 %%-----------------------------------------------------------------------------
 %%

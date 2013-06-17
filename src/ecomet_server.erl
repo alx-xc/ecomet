@@ -61,7 +61,9 @@ init(_) ->
     process_flag(trap_exit, true),
     C = ecomet_conf:get_config(),
     New = prepare_all(C),
-    mpln_p_debug:pr({?MODULE, 'init', ?LINE}, New#csr.debug, run, 1),
+    % link with rabbitmq`s channel
+    erlang:link(New#csr.conn#conn.channel),
+    mpln_p_debug:pr({?MODULE, ?LINE, 'init'}, New#csr.debug, run, 1),
     {ok, New}.
 
 %%-----------------------------------------------------------------------------
@@ -107,7 +109,7 @@ handle_cast({sjs_del, Sid, Conn}, St) ->
 
 handle_cast({sjs_msg, Sid, Conn, Data}, St) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast msg start', {?MODULE, ?LINE}),
-    ecomet_sjs:debug(Conn, Data, "ecomet cast debug"),
+    ecomet_sjs:debug(Conn, Data, <<"ecomet cast debug">>),
     New = process_sjs_msg(St, Sid, Conn, Data),
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'cast msg finish', {?MODULE, ?LINE}),
     {noreply, New};
@@ -126,11 +128,15 @@ handle_cast(_, St) ->
 %%-----------------------------------------------------------------------------
 terminate(_Reason, St) ->
     mpln_p_debug:er({?MODULE, ?LINE, terminate, _Reason}),
-    ecomet_rb:teardown(St#csr.conn),
-    ecomet_sockjs_handler:stop(),
+    catch ecomet_rb:teardown(St#csr.conn),
+    catch ecomet_sockjs_handler:stop(),
     ok.
 
 %%----------------------------------------------------------------------------
+handle_info({'EXIT', Pid, Reason}, State) ->
+    mpln_p_debug:er({?MODULE, ?LINE, <<"handle_info EXIT">>}),
+    exit(Reason);
+
 handle_info(_N, State) ->
     mpln_p_debug:er({?MODULE, ?LINE, unknown_request, _N}),
     {noreply, State}.
