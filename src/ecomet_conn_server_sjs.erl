@@ -98,7 +98,7 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
             St;
         undefined ->
             Type = ecomet_data_msg:get_type(Data),
-            proceed_type_msg(St, use_current_exchange, Type, Data);
+            proceed_type_msg(St, use_current_exchange, Type, Data, [{<<"error">>, <<"auth required">>},{<<"data">>, Data}]);
         Auth ->
             {Res_auth, Auth_data} = send_auth_req(St, Auth),
             erpher_et:trace_me(50, ?MODULE, ?MODULE, proceed_auth_msg, {?MODULE, ?LINE}),
@@ -246,7 +246,7 @@ make_auth_host(Str) ->
 proceed_auth_msg(St, {ok, Info}, Data) ->
     {Uid, Exch} = process_auth_resp(St, Info),
     Type = ecomet_data_msg:get_type(Data),
-    proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data);
+    proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data, Info);
 
 proceed_auth_msg(#child{auth = Auth_data} = St, {error, Reason}, _Data) ->
     mpln_p_debug:er({?MODULE, ?LINE, proceed_auth_msg_error, Auth_data, Reason}),
@@ -259,14 +259,21 @@ proceed_auth_msg(#child{auth = Auth_data} = St, {error, Reason}, _Data) ->
 %%
 -spec proceed_type_msg(#child{}, use_current_exchange | binary(),
                        reauth | binary(),
-                       any()) -> #child{}.
+                       any(), any()) -> #child{}.
 
 %% @doc bad auth
-proceed_type_msg(#child{id=Id, id_s=undefined} = St, _, _, _) ->
-    mpln_p_debug:er({?MODULE, ?LINE, proceed_type_msg, undef_id_s, Id}),
-    send_debug(St, [{<<"debug">>, <<"bad_auth">>}]),
+proceed_type_msg(#child{id_s = <<"undefined">>} = St, Exchange, Type, Data, Info) ->
+    proceed_type_msg(St#child{id_s=undefined}, Exchange, Type, Data, Info),
+    St;
+
+proceed_type_msg(#child{id=Id, id_s=undefined, auth = Auth_data} = St, _, _, _, Info) ->
+    mpln_p_debug:er({?MODULE, ?LINE, proceed_type_msg, <<"userId not found">>, Auth_data, Info, Id}),
+    send_simple(St, [{<<"error">>, <<"bad_auth">>}]),
     ecomet_conn_server:stop(self()),
     St;
+
+proceed_type_msg(St, Exchange, Type, Data, _Info) ->
+    proceed_type_msg(St, Exchange, Type, Data).
 
 %% @doc reauth
 proceed_type_msg(#child{conn=Conn, no_local=No_local, routes=Routes} = St, Exchange, 'reauth', _Data) ->
