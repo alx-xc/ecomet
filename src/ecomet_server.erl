@@ -133,8 +133,9 @@ terminate(_Reason, St) ->
     ok.
 
 %%----------------------------------------------------------------------------
-handle_info({'EXIT', Pid, Reason}, State) ->
-    mpln_p_debug:er({?MODULE, ?LINE, <<"handle_info EXIT">>}),
+handle_info({'EXIT', _Pid, Reason}, _State) ->
+    % logging in terminate/2
+    % mpln_p_debug:er({?MODULE, ?LINE, <<"handle_info EXIT">>, Reason}),
     exit(Reason);
 
 handle_info(_N, State) ->
@@ -458,7 +459,7 @@ check_sjs_child(#csr{sjs_children = Ch} = St, Sid, Conn) ->
 %% @doc finds sockjs child with given client id and checks whether it's
 %% alive
 %%
-is_sjs_child_alive(St, List, Sjs_sid) ->
+is_sjs_child_alive(_St, List, Sjs_sid) ->
     Child = proplists:get_value(Sjs_sid, List),
     case Child of
         undefined ->

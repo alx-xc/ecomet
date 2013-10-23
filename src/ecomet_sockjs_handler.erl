@@ -86,21 +86,23 @@ init({_Any, http}, Req, []) ->
 
 handle(Req, State) ->
     {Path, Req1} = cowboy_http_req:path(Req),
-    error_logger:info_report({?MODULE, 'handle1', ?LINE, Path, Req1, State}),
     case Path of
+        [<<"favicon.ico">>] ->
+            {ok, Req2} = cowboy_http_req:reply(404, [], <<"">>, Req1),
+            {ok, Req2, State};
         [<<"ecomet.html">> = H] ->
             %% FIXME: this branch is for debug only
-            error_logger:info_report({?MODULE, 'handle1 ecomet', ?LINE}),
+            error_logger:info_report({?MODULE, ?LINE, 'handle1 ecomet'}),
             static(Req1, H, State);
         _ ->
-            error_logger:info_report({?MODULE, 'handle1 other', ?LINE}),
+            error_logger:info_report({?MODULE, ?LINE, 'handle1 other'}),
             {ok, Req2} = cowboy_http_req:reply(404, [],
                          <<"404 - Nothing here (via sockjs-erlang fallback)\n">>, Req1),
             {ok, Req2, State}
     end.
 
 terminate(_Req, _State) ->
-    error_logger:info_report({?MODULE, 'terminate', ?LINE, _Req, _State}),
+    error_logger:info_report({?MODULE, ?LINE, 'terminate', _Req, _State}),
     ok.
 
 %%%----------------------------------------------------------------------------
@@ -188,10 +190,10 @@ prepare_base(List) ->
 -spec prepare_cowboy(#csr{}, binary(), binary(), non_neg_integer(), list()) ->
                             ok.
 
-prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
+prepare_cowboy(_C, Base, Base_p, Nb_acc, Trans_opts) ->
     Flogger = fun(_Service, Req, _Type) ->
-                      Req
-                      %flogger(C, _Service, Req, _Type)
+                      %Req
+                      flogger(_C, _Service, Req, _Type)
               end,
     StateEcho = sockjs_handler:init_state(
                   Base_p,
@@ -211,10 +213,10 @@ prepare_cowboy(C, Base, Base_p, Nb_acc, Trans_opts) ->
 
 %%-----------------------------------------------------------------------------
 flogger(C, _Service, Req, _Type) ->
-    {LongPath, Req1} = sockjs_http:path(Req),
-    {Method, Req2}   = sockjs_http:method(Req1),
-    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Type, Method, LongPath}, C#csr.debug, http, 3),
-    mpln_p_debug:pr({?MODULE, 'flogger', ?LINE, _Service, Req}, C#csr.debug, http, 6),
-    Req2.
+    {LongPath, _} = sockjs_http:path(Req),
+    {Method, _}   = sockjs_http:method(Req),
+    mpln_p_debug:pr({?MODULE, ?LINE, 'flogger', _Type, Method, LongPath}, C#csr.debug, http, 3),
+    mpln_p_debug:pr({?MODULE, ?LINE, 'flogger', _Service, Req}, C#csr.debug, http, 6),
+    Req.
 
 %%-----------------------------------------------------------------------------

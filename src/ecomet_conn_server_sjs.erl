@@ -34,7 +34,7 @@
 %%%----------------------------------------------------------------------------
 
 -export([process_msg/2]).
--export([send/3, send_debug/2]).
+-export([send/3, send_debug/2, send_simple/2, send_error/2]).
 -export([recheck_auth/1]).
 -export([process_msg_from_server/2]).
 
@@ -113,7 +113,7 @@ process_msg(#child{id=Id, id_s=Uid} = St, Bin) ->
 -spec send(#child{}, binary(), binary() | string()) -> #child{}.
 
 send(#child{id=Id, id_s=undefined} = St, _Key, _Body) ->
-    send_debug(St, [{<<"debug">>, <<"undefined uid">>}]),
+    send_debug(St, <<"undefined uid">>),
     mpln_p_debug:er({?MODULE, ?LINE, Id, 'send to undefined uid'}),
     St;
 
@@ -139,7 +139,7 @@ send(#child{id_s=User, sjs_conn=Conn} = St, Key, Body) ->
             sockjs:send(Msg, Conn),
             St;
         false ->
-            send_debug(St, [{<<"debug">>, <<"user is not allowed by msg">>}]),
+            send_debug(St, <<"user is not allowed by msg">>),
             St
     end.
 
@@ -148,7 +148,7 @@ send(#child{id_s=User, sjs_conn=Conn} = St, Key, Body) ->
 %%
 %% @doc send message to socket
 %%
-send_simple(#child{sjs_conn=Conn} = St, Data) ->
+send_simple(#child{sjs_conn=Conn}, Data) ->
     Json = mochijson2:encode(Data), % for mochijson2
     Msg = iolist_to_binary(Json),
     sockjs:send(Msg, Conn).
@@ -161,7 +161,15 @@ send_debug(#child{sjs_debug=false}, _Data) ->
     ok;
 
 send_debug(#child{sjs_conn=Conn} = St, Data) ->
-    send_simple(#child{sjs_conn=Conn} = St, Data).
+    send_simple(#child{sjs_conn=Conn} = St, [{<<"debug">>, Data}]).
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc send error message to socket
+%%
+send_error(#child{sjs_conn=Conn} = St, Error) ->
+    send_simple(#child{sjs_conn=Conn} = St, [{<<"error">>, Error}]),
+    ok.
 
 %%%----------------------------------------------------------------------------
 %%% Internal functions
@@ -195,9 +203,9 @@ send_auth_req(#child{cookie_matcher = Cookie_matcher} = St, Info) ->
         cookie = ecomet_data_msg:get_auth_cookie(Info, Cookie_matcher)
     },
     erpher_et:trace_me(50, ?MODULE, ecomet_auth_server, 'auth request', {?MODULE, ?LINE, Auth}),
-    send_debug(St, "auth request start"),
+    send_debug(St, <<"auth request start">>),
     Res = ecomet_auth_server:proceed_http_auth_req(Auth),
-    send_debug(St, "auth request finish"),
+    send_debug(St, <<"auth request finish">>),
     erpher_et:trace_me(50, ecomet_auth_server, ?MODULE, 'auth response', {?MODULE, ?LINE, Res}),
     {Res, Auth}.
 
@@ -249,6 +257,7 @@ proceed_auth_msg(St, {ok, Info}, Data) ->
     proceed_type_msg(St#child{id_s=Uid}, Exch, Type, Data, Info);
 
 proceed_auth_msg(#child{auth = Auth_data} = St, {error, Reason}, _Data) ->
+    send_error(St, <<"auth failed">>),
     mpln_p_debug:er({?MODULE, ?LINE, proceed_auth_msg_error, Auth_data, Reason}),
     ecomet_conn_server:stop(self()),
     St#child{id_s = undefined}.
@@ -267,8 +276,8 @@ proceed_type_msg(#child{id_s = <<"undefined">>} = St, Exchange, Type, Data, Info
     St;
 
 proceed_type_msg(#child{id=Id, id_s=undefined, auth = Auth_data} = St, _, _, _, Info) ->
+    send_error(St, <<"auth bad">>),
     mpln_p_debug:er({?MODULE, ?LINE, proceed_type_msg, <<"userId not found">>, Auth_data, Info, Id}),
-    send_simple(St, [{<<"error">>, <<"bad_auth">>}]),
     ecomet_conn_server:stop(self()),
     St;
 
@@ -280,7 +289,7 @@ proceed_type_msg(#child{conn=Conn, no_local=No_local, routes=Routes} = St, Excha
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg reauth', {?MODULE, ?LINE}),
     erpher_et:trace_me(50, ?MODULE, ecomet_rb, prepare_queue_rebind, {?MODULE, ?LINE}),
     New = ecomet_rb:prepare_queue_rebind(Conn, Exchange, Routes, [], No_local),
-    send_debug(St, [{<<"debug">>, <<"reauth">>}]),
+    send_debug(St, <<"reauth">>),
     St#child{conn = New};
 
 %% @doc subscribe some topics
@@ -297,7 +306,7 @@ proceed_type_msg(#child{conn=Conn, no_local=No_local, routes=Old_routes} = St, E
                   ecomet_rb:prepare_queue_rebind(Conn, Exchange, Old_routes, Routes, No_local)
           end,
     St_new = St#child{conn = New, routes = Routes ++ Old_routes},
-    send_debug(St_new, [{<<"debug">>, St_new#child.routes}]),
+    send_debug(St_new, St_new#child.routes),
     St_new;
 
 %% @doc unsubscribe some topics
@@ -305,21 +314,21 @@ proceed_type_msg(St, _Exchange, <<"unsubscribe">>, Data) ->
     Routes = ecomet_data_msg:get_routes(Data, []),
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg unsubscribe', {?MODULE, ?LINE, Routes}),
     St_new = unsubscribe(St, Routes),
-    send_debug(St_new, [{<<"debug">>, St_new#child.routes}]),
+    send_debug(St_new, St_new#child.routes),
     St_new;
 
 %% @doc debug
 proceed_type_msg(St, _Exchange, <<"debug">>, _Data) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg debug on', {?MODULE, ?LINE, _Data}),
     St_new = St#child{sjs_debug = true},
-    send_debug(St_new, [{<<"debug">>, <<"on">>}]),
+    send_debug(St_new, <<"on">>),
     St_new;
 
 %% @doc debug off
 proceed_type_msg(St, _Exchange, <<"debug_off">>, _Data) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg debug off', {?MODULE, ?LINE, _Data}),
     St_new = St#child{sjs_debug = false},
-    send_debug(St, [{<<"debug">>, <<"off">>}]),
+    send_debug(St, <<"off">>),
     St_new;
 
 proceed_type_msg(St, _Exchange, Other, _Data) ->
@@ -341,7 +350,7 @@ unsubscribe(#child{conn=Conn, routes=Old_routes} = St, [Route|Routes]) ->
 
         false ->
             mpln_p_debug:er({?MODULE, ?LINE, <<"unsubscribe unknown route">>, Route}),
-            send_debug(St, [{<<"debug">>, <<"unsubscribe unknown route">>}]),
+            send_debug(St, <<"unsubscribe unknown route">>),
             St
     end,
     unsubscribe(St_new, Routes);

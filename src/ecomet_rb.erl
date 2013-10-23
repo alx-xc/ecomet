@@ -326,9 +326,7 @@ prepare_queue_unbind_one(#conn{consumer_tags=[Head|_]} = Conn, Tag_remove) ->
 -spec setup_consumer(any(), any(), boolean()) -> any().
 
 setup_consumer(Channel, Q, No_local) ->
-    BasicConsume = #'basic.consume'{queue = Q, no_ack = false,
-                                    no_local = No_local
-                                   },
+    BasicConsume = #'basic.consume'{queue = Q, no_ack = false, no_local = No_local},
     #'basic.consume_ok'{consumer_tag = ConsumerTag}
         = amqp_channel:subscribe(Channel, BasicConsume, self()),
     ConsumerTag
@@ -409,7 +407,7 @@ cancel_consumer(Channel, ConsumerTag) ->
     % After the consumer is finished interacting with the queue,
     % it can deregister itself
     BasicCancel = #'basic.cancel'{consumer_tag = ConsumerTag,
-        nowait = false},
+        nowait = false}, % true?
     #'basic.cancel_ok'{consumer_tag = ConsumerTag} =
         amqp_channel:call(Channel,BasicCancel).
 

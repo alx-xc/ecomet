@@ -90,14 +90,14 @@ handle_cast({data_from_server, Data}, St) ->
     {noreply, New, New#child.economize};
 
 handle_cast({data_from_sjs, Data}, St) ->
-    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server cast debug">>),
+    ecomet_conn_server_sjs:send_debug(St, <<"conn_server cast debug">>),
     erpher_et:trace_me(50, ?MODULE, ecomet_conn_server_sjs, process_msg, {?MODULE, ?LINE}),
     St_r = ecomet_conn_server_sjs:process_msg(St, Data),
-    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server process_msg end debug">>),
+    ecomet_conn_server_sjs:send_debug(St, <<"conn_server process_msg end debug">>),
     New = update_idle(St_r),
-    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server update_idle end debug">>),
+    ecomet_conn_server_sjs:send_debug(St, <<"conn_server update_idle end debug">>),
     call_gc(New),
-    ecomet_sjs:debug(St#child.sjs_conn, Data, <<"conn_server call_gc end debug">>),
+    ecomet_conn_server_sjs:send_debug(St, <<"conn_server call_gc end debug">>),
     {noreply, New, New#child.economize};
 
 handle_cast(_N, St) ->
@@ -132,7 +132,7 @@ handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req, St) ->
 %% @doc amqp setup consumer confirmation. In fact, unnecessary for case
 %% of list of consumers
 handle_info(#'basic.consume_ok'{consumer_tag = _Tag}, St) ->
-    ecomet_conn_server_sjs:send_debug(St, <<"basic.consume_ok">>),
+    ecomet_conn_server_sjs:send_simple(St, [{<<"event">>, <<"consume.ok">>}]),
     New = St#child{conn=(St#child.conn)#conn{consumer=ok}},
     {noreply, New, New#child.economize};
 
