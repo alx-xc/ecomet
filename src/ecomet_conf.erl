@@ -89,6 +89,7 @@ get_child_config(List) ->
         auth_recheck = proplists:get_value(
                                       auth_recheck_interval,
                                       List, ?AUTH_RECHECK_INTERVAL),
+        possible_push_keys = proplists:get_value(possible_push_keys, List, <<"^cspush_">>),
         cookie_matcher = proplists:get_value(cookie_matcher, List, [<<"ID">>]),
         idle_timeout = proplists:get_value(idle_timeout, List),
         qmax_dur = proplists:get_value(qmax_dur, List, ?QUEUE_MAX_DUR),

@@ -321,8 +321,8 @@ proceed_type_msg(St, _Exchange, <<"push">>, Data) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'push to amqp from socket', {?MODULE, ?LINE, Data}),
     RoutingKey = ecomet_data_msg:get_key(Data),
     Message = ecomet_data_msg:get_message(Data),
-    Payload = erlang:list_to_binary(mochijson2:encode([{<<"message">>, Message}])),
-    push_to_rb(St, RoutingKey, Payload),
+    Users = ecomet_data_msg:get_users(Data),
+    push_to_rb(St, RoutingKey, Message, Users),
     St;
 
 %% @doc debug
@@ -347,11 +347,19 @@ proceed_type_msg(St, _Exchange, Other, _Data) ->
 %%
 %% @doc push to amqp
 %%
--spec push_to_rb(#child{}, binary(), binary()) -> ok.
+-spec push_to_rb(#child{}, binary(), binary(), list()) -> ok.
 
-push_to_rb(#child{conn=Conn} = St, RoutingKey, Payload) ->
-    ecomet_rb:send_message(Conn, RoutingKey, Payload),
-    send_simple(St, [{<<"info">>, <<"pushed">>}]).
+push_to_rb(St, RoutingKey, _Message, _Users) when not is_binary(RoutingKey)->
+    send_error(St, <<"Bad routing key">>);
+
+push_to_rb(#child{conn=Conn, possible_push_keys=Key_matcher} = St, RoutingKey, Message, Users) ->
+    case re:run(RoutingKey, Key_matcher) of
+        nomatch -> send_error(St, erlang:list_to_binary([<<"Impossible routing key '">>, RoutingKey, <<"'">>]));
+        _ ->
+            Payload = erlang:list_to_binary(mochijson2:encode([{<<"message">>, Message}, {<<"allowedUsers">>, Users}])),
+            ecomet_rb:send_message(Conn, RoutingKey, Payload),
+            send_simple(St, [{<<"info">>, <<"pushed">>}])
+    end.
 
 %%-----------------------------------------------------------------------------
 %%
