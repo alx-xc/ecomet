@@ -192,8 +192,8 @@ prepare_base(List) ->
 
 prepare_cowboy(_C, Base, Base_p, Nb_acc, Trans_opts) ->
     Flogger = fun(_Service, Req, _Type) ->
-                      %Req
-                      flogger(_C, _Service, Req, _Type)
+                      Req
+                      %flogger(_C, _Service, Req, _Type)
               end,
     StateEcho = sockjs_handler:init_state(
                   Base_p,

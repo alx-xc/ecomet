@@ -42,7 +42,6 @@
 %%% Includes
 %%%----------------------------------------------------------------------------
 
-%-include_lib("socketio.hrl").
 -include("ecomet_child.hrl").
 
 -ifdef(TEST).
@@ -317,6 +316,15 @@ proceed_type_msg(St, _Exchange, <<"unsubscribe">>, Data) ->
     send_debug(St_new, St_new#child.routes),
     St_new;
 
+%% @doc push message to amqp
+proceed_type_msg(St, _Exchange, <<"push">>, Data) ->
+    erpher_et:trace_me(50, ?MODULE, ?MODULE, 'push to amqp from socket', {?MODULE, ?LINE, Data}),
+    RoutingKey = ecomet_data_msg:get_key(Data),
+    Message = ecomet_data_msg:get_message(Data),
+    Payload = erlang:list_to_binary(mochijson2:encode([{<<"message">>, Message}])),
+    push_to_rb(St, RoutingKey, Payload),
+    St;
+
 %% @doc debug
 proceed_type_msg(St, _Exchange, <<"debug">>, _Data) ->
     erpher_et:trace_me(50, ?MODULE, ?MODULE, 'proceed_type_msg debug on', {?MODULE, ?LINE, _Data}),
@@ -334,6 +342,16 @@ proceed_type_msg(St, _Exchange, <<"debug_off">>, _Data) ->
 proceed_type_msg(St, _Exchange, Other, _Data) ->
     mpln_p_debug:er({?MODULE, ?LINE, proceed_type_msg, other, Other}),
     St.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc push to amqp
+%%
+-spec push_to_rb(#child{}, binary(), binary()) -> ok.
+
+push_to_rb(#child{conn=Conn} = St, RoutingKey, Payload) ->
+    ecomet_rb:send_message(Conn, RoutingKey, Payload),
+    send_simple(St, [{<<"info">>, <<"pushed">>}]).
 
 %%-----------------------------------------------------------------------------
 %%

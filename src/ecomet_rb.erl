@@ -41,7 +41,7 @@
 %%%----------------------------------------------------------------------------
 
 -export([start/1]).
--export([teardown/1, teardown_conn/1, send_message/4, send_message/5]).
+-export([teardown/1, teardown_conn/1, send_message/3, send_message/4, send_message/5]).
 -export([send_ack/2]).
 -export([get_content_data/1]).
 -export([create_exchange/3]).
@@ -183,6 +183,11 @@ send_ack(Conn, Tag) ->
 %% @doc prepares AMQP message with given payload and calls publishing
 %% @since 2011-10-25 13:30
 %%
+-spec send_message(#conn{}, binary(), binary()) -> ok.
+
+send_message(#conn{channel=Channel, exchange=X}, RoutingKey, Payload) ->
+    send_message(Channel, X, RoutingKey, Payload).
+
 -spec send_message(any(), binary(), binary(), binary()) -> ok.
 
 send_message(Channel, X, RoutingKey, Payload) ->

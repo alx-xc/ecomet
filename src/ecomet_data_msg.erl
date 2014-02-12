@@ -42,7 +42,7 @@
 -export([get_auth_url/1, get_auth_cookie/2, get_auth_token/1, get_account/1, get_user_id/1]).
 -export([get_auth_host/1]).
 -export([get_routes/1, get_routes/2]).
--export([get_message/1, get_users/1]).
+-export([get_message/1, get_key/1, get_users/1]).
 
 %%%----------------------------------------------------------------------------
 %%% Public API
@@ -225,6 +225,17 @@ get_routes(Data, Default) ->
         _ ->
             Default
     end.
+
+%%-----------------------------------------------------------------------------
+%%
+%% @doc extracts routing key
+%% @since 2014-02-11 20:48
+%%
+-spec get_key(any()) -> any().
+
+get_key(Data) ->
+    get_value(Data, <<"key">>).
+
 
 %%-----------------------------------------------------------------------------
 %%
