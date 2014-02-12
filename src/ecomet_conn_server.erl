@@ -122,9 +122,9 @@ terminate(Reason, #child{id=Id, type=Type, conn=Conn, sjs_conn=Sconn} = St) ->
 %% @doc message from amqp
 handle_info({#'basic.deliver'{delivery_tag=Tag}, _Content} = Req, St) ->
     ecomet_conn_server_sjs:send_debug(St, <<"basic.deliver">>),
-    erpher_et:trace_me(50, ?MODULE, ecomet_rb, send_ack, {?MODULE, ?LINE, Tag}),
-    ecomet_rb:send_ack(St#child.conn, Tag),
-    ecomet_conn_server_sjs:send_debug(St, <<"basic.deliver ack_sended">>),
+    erpher_et:trace_me(50, ?MODULE, ecomet_rb, <<"basic.deliver">>, {?MODULE, ?LINE, Tag}),
+    %ecomet_rb:send_ack(St#child.conn, Tag),
+    %ecomet_conn_server_sjs:send_debug(St, <<"basic.deliver ack_sended">>),
     New = send_rabbit_msg(St, Req),
     ecomet_conn_server_sjs:send_debug(St, <<"basic.deliver finish">>),
     {noreply, New, New#child.economize};

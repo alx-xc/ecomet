@@ -326,7 +326,7 @@ prepare_queue_unbind_one(#conn{consumer_tags=[Head|_]} = Conn, Tag_remove) ->
 -spec setup_consumer(any(), any(), boolean()) -> any().
 
 setup_consumer(Channel, Q, No_local) ->
-    BasicConsume = #'basic.consume'{queue = Q, no_ack = false, no_local = No_local},
+    BasicConsume = #'basic.consume'{queue = Q, no_ack = true, no_local = No_local},
     #'basic.consume_ok'{consumer_tag = ConsumerTag}
         = amqp_channel:subscribe(Channel, BasicConsume, self()),
     ConsumerTag
