@@ -16,7 +16,8 @@
     auth_last = {0,0,0},
     auth_recheck = ?AUTH_RECHECK_INTERVAL,
     auth = #auth_data{},
-    cookie_matcher,
+    possible_push_keys :: binary, % pattern of possible routing keys for socket to amqp push
+    cookie_matcher :: list, % pattern for filtering cookies ([<<"SID">>], [<<"SID">>, <<"COOKIEID">>])
     sjs_sid,
     sjs_conn,
     clients = [], % in case of many requests with the very same id (quite unusual not to say sabotage)
