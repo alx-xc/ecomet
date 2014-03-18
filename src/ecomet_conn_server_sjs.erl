@@ -215,7 +215,7 @@ send_auth_req(#child{cookie_matcher = Cookie_matcher} = St, Info) ->
 %%
 -spec find_auth_host(#child{}, binary()) -> {binary(), undefined | binary()}.
 
-find_auth_host(#child{user_data_as_auth_host=true}, Url) ->
+find_auth_host(#child{user_data_as_auth_host=true, hardcoded_auth_url=undefined}, Url) ->
     Ustr = mpln_misc_web:make_string(Url),
     case http_uri:parse(Ustr) of
         {error, _Reason} ->
@@ -223,15 +223,18 @@ find_auth_host(#child{user_data_as_auth_host=true}, Url) ->
         {ok, {_, User_info, _, _, _, _}} when User_info == "" ->
             {Url, undefined};
         {ok, {Scheme, User_info, Host, Port, Path, Query}} ->
-            Scheme_str = [atom_to_list(Scheme), "://"],
+            Scheme_str = atom_to_list(Scheme),
             Port_str = integer_to_list(Port),
-            Str = [Scheme_str, "", Host, ":", Port_str, Path, Query],
+            Str = [Scheme_str, "://", Host, ":", Port_str, Path, Query],
             Res_url = unicode:characters_to_binary(Str),
             Auth_host = make_auth_host(User_info),
             {Res_url, Auth_host}
         end;
 
-find_auth_host(_, Url) ->
+find_auth_host(#child{hardcoded_auth_url=undefined}, Url) ->
+    {Url, undefined};
+
+find_auth_host(#child{hardcoded_auth_url=Url}, _) ->
     {Url, undefined}.
     
 %%-----------------------------------------------------------------------------
@@ -412,7 +415,6 @@ process_auth_resp(_, _) ->
 proceed_process_auth_resp(#child{id=Id} = St, Body) ->
     case get_json_body(Body) of
         undefined ->
-            mpln_p_debug:er({?MODULE, ?LINE, Id, json_error, Body}),
             {undefined, <<>>};
         Data ->
             X = create_exchange(St, Data),
@@ -435,6 +437,7 @@ get_json_body(Body) ->
         {ok, Data} ->
             Data;
         {'EXIT', _Reason} ->
+            mpln_p_debug:er({?MODULE, ?LINE, json_error, _Reason}),
             undefined;
         Data ->
             Data

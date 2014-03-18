@@ -163,8 +163,13 @@ http_auth_cache(Auth_data, #auth_cnf{use_cache=true, cache_lt=Cache_lt} = Config
 http_auth_cache(Auth_data, Config) ->
     http_auth_req(Auth_data, Config).
 
+http_auth_req(#auth_data{token = undefined, cookie = Cookie, url = Url, host = Host}, Config) ->
+    http_auth_req_by_cookie(Host, Url, Cookie, Config);
 
-http_auth_req(#auth_data{token = undefined, cookie = Cookie, url = Url, host = Host}, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
+http_auth_req(#auth_data{token = Token, cookie = Cookie, url = Url, host = Host}, Config) ->
+    http_auth_req_by_token(Host, Url, Cookie, Token, Config).
+
+http_auth_req_by_cookie(Host, Url, Cookie, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
     Hdr = make_header(Cookie, Host),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
     erpher_et:trace_me(50, ?MODULE, auth, 'http auth cookie request', {?MODULE, ?LINE, Url, Cookie, Host}),
@@ -172,9 +177,9 @@ http_auth_req(#auth_data{token = undefined, cookie = Cookie, url = Url, host = H
         [{timeout, Http_t}, {connect_timeout, Conn_t}],
         [{body_format, binary}]),
     erpher_et:trace_me(50, auth, ?MODULE, 'http auth response', {?MODULE, ?LINE, Res}),
-    Res;
+    Res.
 
-http_auth_req(#auth_data{token = Token, cookie = Cookie, url = Url_base, host = Host}, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
+http_auth_req_by_token(Host, Url_base, Cookie, Token, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
     Hdr = make_header(Cookie, Host),
     Url = binary:list_to_bin([Url_base, <<"?access_token=">>, Token]),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),

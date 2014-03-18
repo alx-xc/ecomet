@@ -103,7 +103,8 @@ get_child_config(List) ->
         sjs_conn = proplists:get_value(sjs_conn, List),
         exchange_base = proplists:get_value(exchange_base, List, <<>>),
         event = make_event_bin(List),
-        id = proplists:get_value(id, List)
+        id = proplists:get_value(id, List),
+        hardcoded_auth_url = proplists:get_value(hardcoded_auth_url, List)
     }.
 
 get_auth_config() ->
