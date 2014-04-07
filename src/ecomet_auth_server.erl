@@ -181,7 +181,7 @@ http_auth_req_by_cookie(Host, Url, Cookie, #auth_cnf{http_connect_timeout=Conn_t
 
 http_auth_req_by_token(Host, Url_base, Cookie, Token, #auth_cnf{http_connect_timeout=Conn_t, http_timeout=Http_t}) ->
     Hdr = make_header(Cookie, Host),
-    Url = binary:list_to_bin([Url_base, <<"?access_token=">>, Token]),
+    Url = binary:list_to_bin([mpln_misc_web:make_binary(Url_base), <<"?access_token=">>, mpln_misc_web:make_binary(Token)]),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
     erpher_et:trace_me(50, ?MODULE, auth, 'http auth token request', {?MODULE, ?LINE, Url, Token, Host}),
     Res = httpc:request(post, Req,
