@@ -183,6 +183,8 @@ get_auth_cookie(Data, Cookie_matcher) ->
 %%
 clear_cookie(undefined, _Cookie_matcher) ->
     undefined;
+clear_cookie(Cookie, []) ->
+    Cookie;
 clear_cookie(Cookie, Cookie_matcher) ->
     lists:foldl(
         fun(El, Prev) ->

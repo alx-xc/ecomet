@@ -205,7 +205,7 @@ stop(Pid) ->
 -spec prepare_all(#child{}) -> #child{}.
 
 prepare_all(#child{auth_recheck=T} = C) ->
-    Now = now(),
+    Now = erlang:system_time(seconds),
     Cq = prepare_queue(C#child{start_time=Now, last_use=Now}),
     Cid = prepare_id(Cq),
     Cr = prepare_rabbit(Cid),
@@ -303,7 +303,7 @@ proceed_send(#child{type=sjs} = St, #'basic.deliver'{routing_key=Key},
 %%
 %% @doc removes too old or surplus messages from the queue
 %%
--spec clean_queue(queue(), non_neg_integer(), non_neg_integer()) -> queue().
+-spec clean_queue(queue:queue(), non_neg_integer(), non_neg_integer()) -> queue:queue().
 
 clean_queue(Q, Dur, Max) ->
     Qlen = clean_queue_by_len(Q, Max),
@@ -391,7 +391,7 @@ send_queued_msg(St) ->
 %% @doc updates idle timer on GET/POST requests.
 %%
 update_idle(St) ->
-    St#child{last_use=now()}.
+    St#child{last_use = erlang:system_time(seconds)}.
 
 %%-----------------------------------------------------------------------------
 %%
@@ -402,8 +402,7 @@ update_idle(St) ->
 check_idle(#child{idle_timeout=undefined} = St) ->
     St;
 
-check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T,
-timer_idle=Ref} = St) ->
+check_idle(#child{id=Id, id_web=Id_web, idle_timeout=Idle, last_use=T, timer_idle=Ref} = St) ->
     mpln_misc_run:cancel_timer(Ref),
     Now = now(),
     Delta = timer:now_diff(Now, T),

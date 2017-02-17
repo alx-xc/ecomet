@@ -10,9 +10,9 @@
     id_r, % rand id for simulating no_local amqp consumer
     id_web, % rand id from long poll web page
     id_s, % user id to match messages from amqp (used in socket-io, sockjs part)
-    start_time = {0,0,0},
-    last_use = {0,0,0},
-    idle_timeout = ?IDLE_TIMEOUT,
+    start_time = 0 :: integer(), % unixtime, seconds
+    last_use = 0 :: integer(), % unixtime, seconds
+    idle_timeout = ?IDLE_TIMEOUT, % seconds
     auth_last = {0,0,0},
     auth_recheck = ?AUTH_RECHECK_INTERVAL,
     auth = #auth_data{},

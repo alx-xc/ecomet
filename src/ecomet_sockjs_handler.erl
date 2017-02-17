@@ -39,7 +39,7 @@
          stop/0,
          init/3,
          handle/2,
-         terminate/2
+         terminate/2, terminate/3
         ]).
 
 %%%----------------------------------------------------------------------------
@@ -63,7 +63,7 @@ start(#csr{sockjs_config=undefined}) ->
 
 start(#csr{sockjs_config=Sc} = C) ->
     mpln_p_debug:pr({?MODULE, 'init', ?LINE}, C#csr.debug, run, 1),
-    Port = proplists:get_value(port, Sc),
+    Port = proplists:get_value(port, Sc, 8085),
     Nb_acc = proplists:get_value(nb_acceptors, Sc, 100),
     Max_conn = proplists:get_value(max_connections, Sc, 1024),
     {Base, Base_p} = prepare_base(Sc),
@@ -85,23 +85,27 @@ init({_Any, http}, Req, []) ->
     {ok, Req, []}.
 
 handle(Req, State) ->
-    {Path, Req1} = cowboy_http_req:path(Req),
+    {Path, Req1} = cowboy_req:path(Req),
     case Path of
-        [<<"favicon.ico">>] ->
-            {ok, Req2} = cowboy_http_req:reply(404, [], <<"">>, Req1),
+        <<"/favicon.ico">> ->
+            {ok, Req2} = cowboy_req:reply(404, [], <<"">>, Req1),
             {ok, Req2, State};
-        [<<"ecomet.html">> = H] ->
+        <<"/ecomet.html">> = H ->
             %% FIXME: this branch is for debug only
             error_logger:info_report({?MODULE, ?LINE, 'handle1 ecomet'}),
             static(Req1, H, State);
         _ ->
             error_logger:info_report({?MODULE, ?LINE, 'handle1 other'}),
-            {ok, Req2} = cowboy_http_req:reply(404, [],
+            {ok, Req2} = cowboy_req:reply(404, [],
                          <<"404 - Nothing here (via sockjs-erlang fallback)\n">>, Req1),
             {ok, Req2, State}
     end.
 
 terminate(_Req, _State) ->
+    error_logger:info_report({?MODULE, ?LINE, 'terminate', _Req, _State}),
+    ok.
+
+terminate(_Reason, _Req, _State) ->
     error_logger:info_report({?MODULE, ?LINE, 'terminate', _Req, _State}),
     ok.
 
@@ -117,12 +121,12 @@ static(Req, Path, State) ->
     case file:read_file(LocalPath) of
         {ok, Contents} ->
             error_logger:info_report({?MODULE, 'static ok', ?LINE, LocalPath}),
-            {ok, Req2} = cowboy_http_req:reply(200, [{<<"Content-Type">>,
+            {ok, Req2} = cowboy_req:reply(200, [{<<"Content-Type">>,
                 "text/html"}], Contents, Req),
             {ok, Req2, State};
         {error, Reason} ->
             error_logger:info_report({?MODULE, 'static error', ?LINE, LocalPath, Reason}),
-            {ok, Req2} = cowboy_http_req:reply(404, [],
+            {ok, Req2} = cowboy_req:reply(404, [],
                          <<"404 - Nothing here (via sockjs-erlang fallback)\n">>, Req),
             {ok, Req2, State}
     end.
@@ -178,7 +182,7 @@ get_sid(Conn) ->
 -spec prepare_base(list()) -> {binary(), binary()}.
 
 prepare_base(List) ->
-    Tag = proplists:get_value(tag, List),
+    Tag = proplists:get_value(tag, List, "ecomet"),
     Base = mpln_misc_web:make_binary(Tag),
     Base_p = << <<"/">>/binary, Base/binary>>,
     {Base, Base_p}.
@@ -203,13 +207,17 @@ prepare_cowboy(_C, Base, Base_p, Nb_acc, Trans_opts) ->
                    {response_limit, 10000},
                    {logger, Flogger}
                   ]),
-    VRoutes = [{[Base, '...'], sockjs_cowboy_handler, StateEcho},
-               {'_', ?MODULE, []}],
-    Routes = [{'_',  VRoutes}], % any vhost
 
-    cowboy:start_listener(http, Nb_acc,
-                          cowboy_tcp_transport, Trans_opts,
-                          cowboy_http_protocol, [{dispatch, Routes}]).
+    VRoutes = [
+      {<< Base_p/binary , <<"/[...]">>/binary>>, sockjs_cowboy_handler, StateEcho},
+      {'_', ?MODULE, []}
+    ],
+    Routes = [{'_',  VRoutes}], % any vhost
+    Dispatch = cowboy_router:compile(Routes),
+
+    cowboy:start_http(?MODULE, Nb_acc,
+                          Trans_opts,
+                          [{env, [{dispatch, Dispatch}]}]).
 
 %%-----------------------------------------------------------------------------
 flogger(C, _Service, Req, _Type) ->

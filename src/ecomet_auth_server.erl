@@ -130,8 +130,7 @@ proceed_http_auth_req(Auth_data) ->
 %%-----------------------------------------------------------------------------
 
 timestamp() ->
-    {Mega, Seconds, _} = erlang:now(),
-    Mega * 1000000 + Seconds.
+    erlang:system_time(seconds).
 
 run_gc(#auth_st{config = Config, cache = Cache, timer_gc = Timer_gc} = St) ->
     mpln_misc_run:cancel_timer(Timer_gc),
@@ -173,7 +172,7 @@ http_auth_req_by_cookie(Host, Url, Cookie, #auth_cnf{http_connect_timeout=Conn_t
     Hdr = make_header(Cookie, Host),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
     erpher_et:trace_me(50, ?MODULE, auth, 'http auth cookie request', {?MODULE, ?LINE, Url, Cookie, Host}),
-    Res = httpc:request(post, Req,
+    Res = httpc:request(get, Req,
         [{timeout, Http_t}, {connect_timeout, Conn_t}],
         [{body_format, binary}]),
     erpher_et:trace_me(50, auth, ?MODULE, 'http auth response', {?MODULE, ?LINE, Res}),
@@ -184,7 +183,7 @@ http_auth_req_by_token(Host, Url_base, Cookie, Token, #auth_cnf{http_connect_tim
     Url = binary:list_to_bin([mpln_misc_web:make_binary(Url_base), <<"?access_token=">>, mpln_misc_web:make_binary(Token)]),
     Req = make_req(mpln_misc_web:make_string(Url), Hdr),
     erpher_et:trace_me(50, ?MODULE, auth, 'http auth token request', {?MODULE, ?LINE, Url, Token, Host}),
-    Res = httpc:request(post, Req,
+    Res = httpc:request(get, Req,
         [{timeout, Http_t}, {connect_timeout, Conn_t}],
         [{body_format, binary}]),
     erpher_et:trace_me(50, auth, ?MODULE, 'http auth response', {?MODULE, ?LINE, Res}),
@@ -208,4 +207,4 @@ make_header_host(Host) ->
 
 %%-----------------------------------------------------------------------------
 make_req(Url, Hdr) ->
-    {Url, Hdr, "application/x-www-form-urlencoded", <<>>}.
+    {Url, Hdr}.
