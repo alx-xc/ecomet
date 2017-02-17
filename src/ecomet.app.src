@@ -23,6 +23,6 @@
     {env, []},
     {mod, {ecomet_server_app,[]}},
     % ssl - for yaws
-    {applications, [kernel, stdlib, inets, ssl, sockjs, cowboy, crypto, erpher_rt_stat]} %rabbit
+    {applications, [kernel, stdlib, inets, ssl, sockjs, cowboy, crypto]}
 ]}.
 
